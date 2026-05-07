@@ -23,21 +23,11 @@ jobs:
 
       - name: Build Rakuzitu
         run: |
-          wcl \
-            -bt=dos \
-            -ml \
-            -0 \
-            -ox \
-            -s \
-            -fm=rakuzitu \
-            Rakuzitu.c \
-            gameplay.c \
-            video.c \
-            timer.c \
-            keyboard.c \
-            player_assets.c \
-            opponent_assets.c \
-            gameover_asset.c
+          source "$WATCOM/owsetenv.sh"
+
+          wcl -bt=dos -ml -0 -ox -s -fm=rakuzitu \
+            Rakuzitu.c gameplay.c video.c timer.c keyboard.c \
+            player_assets.c opponent_assets.c gameover_asset.c
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
