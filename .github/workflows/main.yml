@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -14,19 +14,20 @@ jobs:
 
       - name: Setup Open Watcom
         uses: open-watcom/setup-watcom@v1
+        with:
+          version: "2.0"
+          target: "dos"
 
       - name: Verify Watcom installation
         run: |
-          echo "WATCOM=$WATCOM"
-          which wcl
+          echo "WATCOM=$env:WATCOM"
+          where wcl
           wcl -h
 
       - name: Build Rakuzitu
         run: |
-          source "$WATCOM/owsetenv.sh"
-
-          wcl -bt=dos -ml -0 -ox -s -fm=rakuzitu \
-            Rakuzitu.c gameplay.c video.c timer.c keyboard.c \
+          wcl -bt=dos -ml -0 -ox -s -fm=rakuzitu `
+            Rakuzitu.c gameplay.c video.c timer.c keyboard.c `
             player_assets.c opponent_assets.c gameover_asset.c
 
       - name: Upload build artifact
