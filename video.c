@@ -3,8 +3,8 @@
 #include "rakuzitu.h"
 #include "assets/issen_bg_strip.h"
 
-static u8 __near top_backbuffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
-static u8 __near clean_background_buffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
+static u8 top_backbuffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
+static u8 clean_background_buffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u16 g_background_step_row = 0;
 static const u16 BACKGROUND_STEP_ROWS = 25;
 
@@ -15,9 +15,14 @@ static void init_recolor_luts(void)
 {
     int i;
     int color;
-    u8 packed, out, shift, c;
+    u8 packed;
+    u8 out;
+    u8 shift;
+    u8 c;
 
-    if (g_luts_initialized) return;
+    if (g_luts_initialized) {
+        return;
+    }
     
     for (color = 0; color < 3; ++color) {
         for (i = 0; i < 256; ++i) {
@@ -36,47 +41,9 @@ static void init_recolor_luts(void)
     g_luts_initialized = 1;
 }
 
-static void copy_words_near(void __near *dst, const void __near *src, u16 word_count);
-#pragma aux copy_words_near = \
-    "cld" \
-    "rep movsw" \
-    parm [di] [si] [cx] \
-    modify [di si cx];
-
-static void copy_bytes_near(void __near *dst, const void __near *src, u16 byte_count);
-#pragma aux copy_bytes_near = \
-    "cld" \
-    "rep movsb" \
-    parm [di] [si] [cx] \
-    modify [di si cx];
-
-static void copy_near_block(void __near *dst, const void __near *src, u16 byte_count)
-{
-    u16 word_count;
-
-    word_count = byte_count >> 1;
-    if (word_count != 0) {
-        copy_words_near(dst, src, word_count);
-    }
-    if (byte_count & 1) {
-        copy_bytes_near((u8 __near *)dst + (word_count << 1), (const u8 __near *)src + (word_count << 1), 1);
-    }
-}
-
-static void far *near_ptr_to_far(void *ptr)
-{
-    return MK_FP(FP_SEG(&g_game), FP_OFF(ptr));
-}
-
-static const void far *near_const_ptr_to_far(const void *ptr)
-{
-    return (const void far *)MK_FP(FP_SEG(&g_game), FP_OFF(ptr));
-}
-
 void set_video_mode(u8 mode)
 {
     union REGS regs;
-
     regs.h.ah = 0x00;
     regs.h.al = mode;
     int86(0x10, &regs, &regs);
@@ -85,9 +52,8 @@ void set_video_mode(u8 mode)
 void init_cga_mode5(void)
 {
     union REGS regs;
-
+    
     init_recolor_luts();
-
     set_video_mode(0x05);
 
     regs.h.ah = 0x0B;
@@ -116,19 +82,24 @@ static void fill_scanline(u8 *dst, u8 value)
 
 static void tile_strip_row(u8 *dst, const u8 far *row_pattern)
 {
-    u8 tile;
-    // Cache the 4 remote bytes into CPU registers immediately
-    u8 p0 = row_pattern[0];
-    u8 p1 = row_pattern[1];
-    u8 p2 = row_pattern[2];
-    u8 p3 = row_pattern[3];
+    u16 w0;
+    u16 w1;
+    u16 *d;
+    int i;
 
-    for (tile = 0; tile < 20; ++tile) {
-        dst[0] = p0;
-        dst[1] = p1;
-        dst[2] = p2;
-        dst[3] = p3;
-        dst += ISSEN_BG_STRIP_BYTES_PER_ROW;
+    w0 = (u16)(row_pattern[0] | (((u16)row_pattern[1]) << 8));
+    w1 = (u16)(row_pattern[2] | (((u16)row_pattern[3]) << 8));
+    d = (u16 *)dst;
+
+    if (w0 == w1) {
+        for (i = 0; i < 40; ++i) {
+            *d++ = w0;
+        }
+    } else {
+        for (i = 0; i < 20; ++i) {
+            *d++ = w0;
+            *d++ = w1;
+        }
     }
 }
 
@@ -136,7 +107,9 @@ static void compose_background(u16 scroll_pixels)
 {
     int screen_y;
     int source_y;
-    u8 __near *dst_ptr = (u8 __near *)top_backbuffer;
+    u8 *dst_ptr;
+
+    dst_ptr = (u8 *)top_backbuffer;
 
     for (screen_y = 0; screen_y < TOP_VIEW_HEIGHT; ++screen_y) {
         source_y = (ISSEN_BG_STRIP_HEIGHT - TOP_VIEW_HEIGHT) + screen_y - scroll_pixels;
@@ -155,10 +128,10 @@ static void compose_background_rows(u16 scroll_pixels, u16 start_row, u16 row_co
     u16 end_row;
     u16 screen_y;
     int source_y;
-    u8 __near *clean_ptr;
-    u8 __near *top_ptr;
+    u8 *clean_ptr;
+    u8 *top_ptr;
 
-    end_row = (u16)(start_row + row_count);
+    end_row = start_row + row_count;
     if (end_row > TOP_VIEW_HEIGHT) {
         end_row = TOP_VIEW_HEIGHT;
     }
@@ -260,6 +233,7 @@ static Rect union_rects(Rect a, Rect b)
     out.height = y2 - y1;
     out.valid = 1;
     clip_rect_to_top_area(&out);
+    
     return out;
 }
 
@@ -269,8 +243,8 @@ static void restore_rect_from_background(const Rect *rect)
     int start_byte;
     int end_byte;
     int byte_count;
-    u8 __near *dst;
-    const u8 __near *src;
+    u8 *dst;
+    const u8 *src;
 
     if (rect == NULL || rect->valid == 0) {
         return;
@@ -284,7 +258,7 @@ static void restore_rect_from_background(const Rect *rect)
     src = &clean_background_buffer[rect->y][start_byte];
 
     for (row = rect->y; row < rect->y + rect->height; ++row) {
-        copy_near_block(dst, src, (u16)byte_count);
+        memcpy(dst, src, (size_t)byte_count);
         dst += BYTES_PER_SCANLINE;
         src += BYTES_PER_SCANLINE;
     }
@@ -297,7 +271,7 @@ static void refresh_clean_background(GameContext *game)
     }
 
     compose_background(game->background_scroll_pixels);
-    copy_near_block(clean_background_buffer, top_backbuffer, (u16)sizeof(top_backbuffer));
+    memcpy(clean_background_buffer, top_backbuffer, sizeof(top_backbuffer));
     game->rendered_background_scroll_pixels = game->background_scroll_pixels;
     g_background_step_row = TOP_VIEW_HEIGHT;
 }
@@ -311,16 +285,16 @@ static void draw_animation_frame(const AnimationAsset *animation, u16 frame_inde
     const u8 far *frame_mask_odd;
     const u8 far *mask_ptr;
     const u8 far *pix_ptr;
-    u8 __near *dst_ptr;
+    u8 *dst_ptr;
     int row;
-    int col;
     int dst_x_byte;
     int dst_y;
     int src_start_byte;
     int visible_byte_count;
     int clip_right_byte;
-    u8 mask_byte;
-    u8 pixel_byte;
+    int count;
+    u8 m;
+    u8 p;
     const u8 *lut;
 
     if (animation == NULL) {
@@ -373,7 +347,7 @@ static void draw_animation_frame(const AnimationAsset *animation, u16 frame_inde
 
     for (row = 0; row < (int)frame_meta->height; ++row) {
         dst_y = draw_y + row;
-
+        
         if (row & 1) {
             pix_ptr = frame_pixels_odd;
             mask_ptr = frame_mask_odd;
@@ -391,37 +365,38 @@ static void draw_animation_frame(const AnimationAsset *animation, u16 frame_inde
         }
 
         dst_ptr = &top_backbuffer[dst_y][dst_x_byte];
+        count = visible_byte_count;
 
-        if (lut) {
-            for (col = 0; col < visible_byte_count; ++col) {
-                mask_byte = *mask_ptr++;
-                if (mask_byte == 0xFF) {  // Highly probable transparent byte
+        if (lut != NULL) {
+            while (count--) {
+                m = *mask_ptr++;
+                if (m == 0xFF) {
                     pix_ptr++;
                     dst_ptr++;
-                    continue;
-                }
-                pixel_byte = lut[*pix_ptr++];
-                if (mask_byte == 0x00) {  // Complete replacement block
-                    *dst_ptr++ = pixel_byte;
                 } else {
-                    *dst_ptr = (*dst_ptr & mask_byte) | pixel_byte;
-                    dst_ptr++;
+                    p = lut[*pix_ptr++];
+                    if (m == 0x00) {
+                        *dst_ptr++ = p;
+                    } else {
+                        *dst_ptr = (*dst_ptr & m) | p;
+                        dst_ptr++;
+                    }
                 }
             }
         } else {
-            for (col = 0; col < visible_byte_count; ++col) {
-                mask_byte = *mask_ptr++;
-                if (mask_byte == 0xFF) {
+            while (count--) {
+                m = *mask_ptr++;
+                if (m == 0xFF) {
                     pix_ptr++;
                     dst_ptr++;
-                    continue;
-                }
-                pixel_byte = *pix_ptr++;
-                if (mask_byte == 0x00) {
-                    *dst_ptr++ = pixel_byte;
                 } else {
-                    *dst_ptr = (*dst_ptr & mask_byte) | pixel_byte;
-                    dst_ptr++;
+                    p = *pix_ptr++;
+                    if (m == 0x00) {
+                        *dst_ptr++ = p;
+                    } else {
+                        *dst_ptr = (*dst_ptr & m) | p;
+                        dst_ptr++;
+                    }
                 }
             }
         }
@@ -431,25 +406,25 @@ static void draw_animation_frame(const AnimationAsset *animation, u16 frame_inde
 static void build_player_sprite(const GameContext *game, Rect *rect_out, u16 *frame_index_out)
 {
     const AnimationAsset *animation;
-    const PackedSpriteFrame far *frame_meta;
     u16 frame_index;
+    const PackedSpriteFrame far *frame_meta;
     int draw_x;
     int draw_y;
 
     animation = get_player_animation(game->player.anim_mode);
     frame_index = get_player_frame_index(game, animation);
     frame_meta = animation->frames + frame_index;
-    draw_x = fp_to_int(game->player.x_fp);
-    if (draw_x & 3) {
-        draw_x &= ~3;
-    }
+    
+    draw_x = fp_to_int(game->player.x_fp) & ~3;
     draw_y = game->player.y_baseline - frame_meta->height;
+    
     rect_out->x = draw_x;
     rect_out->y = draw_y;
     rect_out->width = frame_meta->width;
     rect_out->height = frame_meta->height;
     rect_out->valid = 1;
     clip_rect_to_top_area(rect_out);
+    
     if (frame_index_out != NULL) {
         *frame_index_out = frame_index;
     }
@@ -458,8 +433,8 @@ static void build_player_sprite(const GameContext *game, Rect *rect_out, u16 *fr
 static void build_opponent_sprite(const GameContext *game, Rect *rect_out, u16 *frame_index_out)
 {
     const AnimationAsset *animation;
-    const PackedSpriteFrame far *frame_meta;
     u16 frame_index;
+    const PackedSpriteFrame far *frame_meta;
     int draw_x;
     int draw_y;
 
@@ -471,17 +446,17 @@ static void build_opponent_sprite(const GameContext *game, Rect *rect_out, u16 *
     animation = get_opponent_animation(&game->opponent);
     frame_index = get_opponent_frame_index(game, animation);
     frame_meta = animation->frames + frame_index;
-    draw_x = fp_to_int(game->opponent.x_fp);
-    if (draw_x & 3) {
-        draw_x &= ~3;
-    }
+    
+    draw_x = fp_to_int(game->opponent.x_fp) & ~3;
     draw_y = game->opponent.y_baseline - frame_meta->height;
+    
     rect_out->x = draw_x;
     rect_out->y = draw_y;
     rect_out->width = frame_meta->width;
     rect_out->height = frame_meta->height;
     rect_out->valid = 1;
     clip_rect_to_top_area(rect_out);
+    
     if (frame_index_out != NULL) {
         *frame_index_out = frame_index;
     }
@@ -492,31 +467,25 @@ static void blit_top_half(const GameContext *game)
     u16 row;
     u16 even_offset;
     u16 odd_offset;
-    void far *dst;
-    void far *src;
-    u8 __near *backbuffer_ptr;
+    u8 *backbuffer_ptr;
+
+    even_offset = 0;
+    odd_offset = CGA_ODD_OFFSET;
 
     if (game->video_wait_vblank) {
         wait_vblank();
     }
 
-    even_offset = 0;
-    odd_offset = CGA_ODD_OFFSET;
-
     backbuffer_ptr = top_backbuffer[0];
     for (row = 0; row < TOP_VIEW_HEIGHT; row += 2) {
-        dst = MK_FP(CGA_SEGMENT, even_offset);
-        src = (void far *)near_const_ptr_to_far(backbuffer_ptr);
-        _fmemcpy(dst, src, BYTES_PER_SCANLINE);
+        _fmemcpy(MK_FP(CGA_SEGMENT, even_offset), (void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
         even_offset += BYTES_PER_SCANLINE;
         backbuffer_ptr += (BYTES_PER_SCANLINE * 2);
     }
 
     backbuffer_ptr = top_backbuffer[1];
     for (row = 1; row < TOP_VIEW_HEIGHT; row += 2) {
-        dst = MK_FP(CGA_SEGMENT, odd_offset);
-        src = (void far *)near_const_ptr_to_far(backbuffer_ptr);
-        _fmemcpy(dst, src, BYTES_PER_SCANLINE);
+        _fmemcpy(MK_FP(CGA_SEGMENT, odd_offset), (void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
         odd_offset += BYTES_PER_SCANLINE;
         backbuffer_ptr += (BYTES_PER_SCANLINE * 2);
     }
@@ -531,14 +500,12 @@ static void blit_rect_to_vram(const Rect *rect, const GameContext *game)
     u16 current_offset;
     u16 offset_even;
     u16 offset_odd;
-    void far *dst_ptr;
-    void far *src_ptr;
-    const u8 __near *backbuffer_ptr;
+    const u8 *backbuffer_ptr;
 
     if (rect == NULL || rect->valid == 0) {
         return;
     }
-
+    
     if (game->video_wait_vblank) {
         wait_vblank();
     }
@@ -548,7 +515,7 @@ static void blit_rect_to_vram(const Rect *rect, const GameContext *game)
     byte_count = end_byte - start_byte;
 
     offset_even = (u16)((rect->y >> 1) * BYTES_PER_SCANLINE + start_byte);
-    offset_odd  = (u16)((rect->y >> 1) * BYTES_PER_SCANLINE + start_byte) + CGA_ODD_OFFSET;
+    offset_odd  = offset_even + CGA_ODD_OFFSET;
     if (rect->y & 1) {
         offset_even += BYTES_PER_SCANLINE;
     }
@@ -564,27 +531,21 @@ static void blit_rect_to_vram(const Rect *rect, const GameContext *game)
             offset_even += BYTES_PER_SCANLINE;
         }
 
-        dst_ptr = MK_FP(CGA_SEGMENT, current_offset);
-        src_ptr = (void far *)near_const_ptr_to_far(backbuffer_ptr);
-        _fmemcpy(dst_ptr, src_ptr, byte_count);
-
+        _fmemcpy(MK_FP(CGA_SEGMENT, current_offset), (const void far *)backbuffer_ptr, (size_t)byte_count);
         backbuffer_ptr += BYTES_PER_SCANLINE;
     }
 }
 
 void draw_ui_frame_once(void)
 {
-    u8 ui_scanline[BYTES_PER_SCANLINE];
+    static u8 ui_scanline[BYTES_PER_SCANLINE];
     u16 screen_y;
     u16 offset;
     u16 x;
     u16 offset_even;
     u16 offset_odd;
-    void far *dst;
-    void far *src;
 
     fill_scanline(ui_scanline, WHITE_BYTE);
-
     for (x = 20; x < 30; ++x) {
         ui_scanline[x] = BLACK_BYTE;
         ui_scanline[x + 12] = BLACK_BYTE;
@@ -604,10 +565,7 @@ void draw_ui_frame_once(void)
             offset = offset_even;
             offset_even += BYTES_PER_SCANLINE;
         }
-
-        dst = MK_FP(CGA_SEGMENT, offset);
-        src = (void far *)near_const_ptr_to_far(ui_scanline);
-        _fmemcpy(dst, src, BYTES_PER_SCANLINE);
+        _fmemcpy(MK_FP(CGA_SEGMENT, offset), (const void far *)ui_scanline, BYTES_PER_SCANLINE);
     }
 }
 
@@ -619,6 +577,7 @@ static void draw_gameover_fullscreen(const GameContext *game)
     u16 block_size;
 
     (void)game;
+    
     frame_meta = g_gameover_frame;
     pixels_even = g_gameover_pixels_even + frame_meta->pixel_even_offset;
     pixels_odd = g_gameover_pixels_odd + frame_meta->pixel_odd_offset;
@@ -626,8 +585,8 @@ static void draw_gameover_fullscreen(const GameContext *game)
 
     wait_vblank();
 
-    _fmemcpy(MK_FP(CGA_SEGMENT, 0), (void far *)pixels_even, block_size);
-    _fmemcpy(MK_FP(CGA_SEGMENT, CGA_ODD_OFFSET), (void far *)pixels_odd, block_size);
+    _fmemcpy(MK_FP(CGA_SEGMENT, 0), (const void far *)pixels_even, block_size);
+    _fmemcpy(MK_FP(CGA_SEGMENT, CGA_ODD_OFFSET), (const void far *)pixels_odd, block_size);
 }
 
 static void render_active_scene(GameContext *game)
@@ -635,7 +594,6 @@ static void render_active_scene(GameContext *game)
     Rect current_player_rect;
     Rect current_opponent_rect;
     Rect dirty_rect;
-    Rect current_union;
     u8 background_changed;
     u16 player_frame;
     u16 opp_frame;
@@ -649,8 +607,10 @@ static void render_active_scene(GameContext *game)
 
     invalidate_rect(&current_player_rect);
     invalidate_rect(&current_opponent_rect);
+    
     player_anim = get_player_animation(game->player.anim_mode);
     build_player_sprite(game, &current_player_rect, &player_frame);
+    
     if (game->opponent.active) {
         build_opponent_sprite(game, &current_opponent_rect, &opp_frame);
         opp_anim = get_opponent_animation(&game->opponent);
@@ -660,9 +620,10 @@ static void render_active_scene(GameContext *game)
     }
 
     if (background_changed) {
-        copy_near_block(top_backbuffer, clean_background_buffer, (u16)sizeof(top_backbuffer));
+        memcpy(top_backbuffer, clean_background_buffer, sizeof(top_backbuffer));
         draw_animation_frame(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3,
             game->player.y_baseline - (player_anim->frames + player_frame)->height, 0, 0, &game->player.rect);
+            
         if (game->opponent.active) {
             draw_animation_frame(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3,
                 game->opponent.y_baseline - (opp_anim->frames + opp_frame)->height, 1, (u8)game->opponent.eye_color, &game->opponent.rect);
@@ -671,12 +632,12 @@ static void render_active_scene(GameContext *game)
         }
         blit_top_half(game);
     } else {
-        current_union = union_rects(current_player_rect, current_opponent_rect);
-        dirty_rect = union_rects(union_rects(game->previous_player_rect, game->previous_opponent_rect), current_union);
+        dirty_rect = union_rects(union_rects(game->previous_player_rect, game->previous_opponent_rect), union_rects(current_player_rect, current_opponent_rect));
         restore_rect_from_background(&dirty_rect);
 
         draw_animation_frame(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3,
             game->player.y_baseline - (player_anim->frames + player_frame)->height, 0, 0, &game->player.rect);
+            
         if (game->opponent.active) {
             draw_animation_frame(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3,
                 game->opponent.y_baseline - (opp_anim->frames + opp_frame)->height, 1, (u8)game->opponent.eye_color, &game->opponent.rect);
@@ -699,7 +660,6 @@ void render_foreground(GameContext *game)
         }
         return;
     }
-
     render_active_scene(game);
 }
 
@@ -707,13 +667,13 @@ void render_background_step(GameContext *game)
 {
     Rect player_rect;
     Rect opponent_rect;
+    Rect step_rect;
     u16 player_frame;
     u16 opp_frame;
-    const AnimationAsset *player_anim;
-    const AnimationAsset *opp_anim;
     u16 step_start_row;
     u16 step_row_count;
-    Rect step_rect;
+    const AnimationAsset *player_anim;
+    const AnimationAsset *opp_anim;
     int player_draw_x;
     int player_draw_y;
     int opponent_draw_x;
@@ -722,12 +682,9 @@ void render_background_step(GameContext *game)
     if (game->state == GAME_STATE_GAMEOVER || game->state == GAME_STATE_PLAYER_DYING) {
         return;
     }
-
-    if (game->rendered_background_scroll_pixels == game->background_scroll_pixels &&
-        g_background_step_row == 0) {
+    if (game->rendered_background_scroll_pixels == game->background_scroll_pixels && g_background_step_row == 0) {
         return;
     }
-
     if (g_background_step_row >= TOP_VIEW_HEIGHT) {
         g_background_step_row = 0;
     }
@@ -735,7 +692,7 @@ void render_background_step(GameContext *game)
     step_start_row = g_background_step_row;
     step_row_count = BACKGROUND_STEP_ROWS;
     if (step_start_row + step_row_count > TOP_VIEW_HEIGHT) {
-        step_row_count = (u16)(TOP_VIEW_HEIGHT - step_start_row);
+        step_row_count = TOP_VIEW_HEIGHT - step_start_row;
     }
 
     compose_background_rows(game->background_scroll_pixels, step_start_row, step_row_count, 1);
@@ -744,9 +701,8 @@ void render_background_step(GameContext *game)
     build_player_sprite(game, &player_rect, &player_frame);
     player_draw_x = fp_to_int(game->player.x_fp) & ~3;
     player_draw_y = game->player.y_baseline - (player_anim->frames + player_frame)->height;
-    if (player_rect.valid &&
-        player_rect.y < (int)(step_start_row + step_row_count) &&
-        (player_rect.y + player_rect.height) > (int)step_start_row) {
+    
+    if (player_rect.valid && player_rect.y < (int)(step_start_row + step_row_count) && (player_rect.y + player_rect.height) > (int)step_start_row) {
         draw_animation_frame(player_anim, player_frame, player_draw_x, player_draw_y, 0, 0, &game->player.rect);
     }
 
@@ -755,9 +711,8 @@ void render_background_step(GameContext *game)
         build_opponent_sprite(game, &opponent_rect, &opp_frame);
         opponent_draw_x = fp_to_int(game->opponent.x_fp) & ~3;
         opponent_draw_y = game->opponent.y_baseline - (opp_anim->frames + opp_frame)->height;
-        if (opponent_rect.valid &&
-            opponent_rect.y < (int)(step_start_row + step_row_count) &&
-            (opponent_rect.y + opponent_rect.height) > (int)step_start_row) {
+        
+        if (opponent_rect.valid && opponent_rect.y < (int)(step_start_row + step_row_count) && (opponent_rect.y + opponent_rect.height) > (int)step_start_row) {
             draw_animation_frame(opp_anim, opp_frame, opponent_draw_x, opponent_draw_y, 1, (u8)game->opponent.eye_color, &game->opponent.rect);
         }
     }
@@ -769,7 +724,7 @@ void render_background_step(GameContext *game)
     step_rect.valid = 1;
     blit_rect_to_vram(&step_rect, game);
 
-    g_background_step_row = (u16)(g_background_step_row + step_row_count);
+    g_background_step_row += step_row_count;
     if (g_background_step_row >= TOP_VIEW_HEIGHT) {
         game->rendered_background_scroll_pixels = game->background_scroll_pixels;
         g_background_step_row = 0;
