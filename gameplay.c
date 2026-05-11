@@ -44,11 +44,12 @@ static const OpponentFigureDef *get_opponent_def(OpponentFigure figure)
     }
 }
 
-static u32 seed_rng(void)
+static u16 seed_rng(void)
 {
     union REGS regs;
     u16 pit_lsb;
     u16 pit_msb;
+    u16 seed;
 
     regs.h.ah = 0x00;
     int86(0x1A, &regs, &regs);
@@ -57,13 +58,24 @@ static u32 seed_rng(void)
     pit_lsb = inp(0x40);
     pit_msb = inp(0x40);
 
-    return (((u32)regs.x.cx) << 16) ^ regs.x.dx ^ (((u16)(pit_msb << 8)) | pit_lsb) ^ 0x4D554C55UL;
+    seed = regs.x.dx ^ (((u16)(pit_msb << 8)) | pit_lsb) ^ 0x5AA5;
+    if (seed == 0) {
+        seed = 1; /* LFSR will get stuck if seeded with 0 */
+    }
+    return seed;
 }
 
 static u16 rng_next_u16(GameContext *game)
 {
-    game->rng = (game->rng * 25173UL) + 13849UL;
-    return (u16)(game->rng >> 8);
+    u16 lsb;
+    
+    /* 16-bit Galois LFSR: lightning fast natively on 8088 */
+    lsb = game->rng & 1;
+    game->rng >>= 1;
+    if (lsb) {
+        game->rng ^= 0xB400; /* Taps at 16, 14, 13, 11 */
+    }
+    return game->rng;
 }
 
 static OpponentFigure pick_weighted_figure(GameContext *game)
@@ -108,16 +120,6 @@ static void invalidate_rect(Rect *rect)
     rect->width = 0;
     rect->height = 0;
     rect->valid = 0;
-}
-
-long fp_from_int(int value)
-{
-    return ((long)value) << FP_SHIFT;
-}
-
-int fp_to_int(long value)
-{
-    return (int)(value >> FP_SHIFT);
 }
 
 const AnimationAsset *get_player_animation(PlayerAnimMode mode)
@@ -285,6 +287,7 @@ static void update_background(GameContext *game)
 static void update_player(GameContext *game)
 {
     const AnimationAsset *animation;
+    u16 active_frame_start;
 
     if (game->state == GAME_STATE_PLAYER_ENTRY) {
         if (game->player.x_fp < fp_from_int(PLAYER_HOME_X)) {
@@ -318,7 +321,7 @@ static void update_player(GameContext *game)
     }
 
     if (animation != NULL) {
-        u16 active_frame_start = (animation->frame_count > 2) ? (u16)(animation->frame_count - 2) : 0;
+        active_frame_start = (animation->frame_count > 2) ? (u16)(animation->frame_count - 2) : 0;
         game->player.attack_active = (get_one_shot_frame(game->player.anim_tick, PLAYER_ATTACK_TOTAL_TICKS, animation) >= active_frame_start);
     } else {
         game->player.attack_active = 0;

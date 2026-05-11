@@ -35,18 +35,21 @@ void restore_timer(void)
     _dos_setvect(0x08, g_old_timer_isr);
 }
 
-u8 consume_base_tick(void)
+u8 consume_available_ticks(u8 max_ticks)
 {
-    u8 have_tick;
+    u8 consumed;
 
+    /* Single disable/enable block to prevent repeated prefetch pipeline flushes */
     _disable();
-    have_tick = (g_logic_ticks != 0);
-    if (have_tick) {
-        --g_logic_ticks;
+    if (g_logic_ticks >= max_ticks) {
+        consumed = max_ticks;
+    } else {
+        consumed = (u8)g_logic_ticks;
     }
+    g_logic_ticks -= consumed;
     _enable();
 
-    return have_tick;
+    return consumed;
 }
 
 u16 pending_base_ticks(void)

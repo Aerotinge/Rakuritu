@@ -11,6 +11,7 @@ static void run_game_loop(void)
     u8 base_ticks_processed;
     u8 foreground_due;
     u8 background_pending;
+    u8 grabbed_ticks;
     u16 backlog;
 
     logic_divider_count = 0;
@@ -37,7 +38,11 @@ static void run_game_loop(void)
         }
 
         base_ticks_processed = 0;
-        while (base_ticks_processed < base_ticks_to_process && consume_base_tick()) {
+        
+        /* Grab ticks in a single atomic batch instead of polling the timer flag repetitively */
+        grabbed_ticks = consume_available_ticks(base_ticks_to_process);
+        
+        while (base_ticks_processed < grabbed_ticks) {
             ++base_ticks_processed;
 
             ++logic_divider_count;
@@ -81,9 +86,12 @@ int main(void)
     init_cga_mode5();
     init_keyboard();
     init_timer();
+    
     run_game_loop();
+    
     restore_timer();
     restore_keyboard();
     set_video_mode(0x03);
+    
     return 0;
 }

@@ -23,8 +23,13 @@ typedef unsigned long  u32;
 #define PIT_INPUT_HZ              1193180UL
 #define PIT_BIOS_DIVISOR          65536UL
 #define PIT_BASE_DIVISOR          ((u16)(PIT_INPUT_HZ / BASE_TIMER_HZ))
+
 #define FP_SHIFT                  8
 #define FP_ONE                    256L
+/* Fixed-point conversions replaced with instantaneous inline macros */
+#define fp_from_int(value)        (((long)(value)) << FP_SHIFT)
+#define fp_to_int(value)          ((int)((value) >> FP_SHIFT))
+
 #define SPEED_0X_FP               0L
 #define SPEED_1X_FP               ((80L << FP_SHIFT) / LOGIC_HZ)
 #define SPEED_15X_FP              ((120L << FP_SHIFT) / LOGIC_HZ)
@@ -179,7 +184,7 @@ typedef struct GameContext {
     u16 state_tick;
     u16 kill_counter;
     u16 karma_counter;
-    u32 rng;
+    u16 rng; /* Replaced massive 32-bit PRNG with fast 16-bit PRNG */
     InputBindings bindings;
     InputSnapshot input;
     PlayerRuntime player;
@@ -212,7 +217,7 @@ void draw_ui_frame_once(void);
 
 void init_timer(void);
 void restore_timer(void);
-u8 consume_base_tick(void);
+u8 consume_available_ticks(u8 max_ticks);
 u16 pending_base_ticks(void);
 
 void init_keyboard(void);
@@ -222,8 +227,6 @@ void init_default_bindings(InputBindings *bindings);
 
 void init_game(GameContext *game);
 void tick_game(GameContext *game);
-long fp_from_int(int value);
-int fp_to_int(long value);
 const AnimationAsset *get_player_animation(PlayerAnimMode mode);
 const AnimationAsset *get_opponent_animation(const OpponentRuntime *opponent);
 u16 get_player_frame_index(const GameContext *game, const AnimationAsset *animation);
