@@ -2,6 +2,7 @@
 
 #include "rakuzitu.h"
 #include "assets/issen_bg_strip.h"
+#include "assets/bg_sun.h"
 
 static u8 top_backbuffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u8 clean_background_buffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
@@ -103,6 +104,104 @@ static void tile_strip_row(u8 *dst, const u8 far *row_pattern)
     }
 }
 
+static void draw_sun_slice(u16 scroll_pixels, u16 start_row, u16 row_count, u8 write_clean, u8 write_top)
+{
+    int sun_y;
+    int sun_x_byte;
+    int visible_byte_count;
+    int row;
+    int dst_y;
+    const u8 far *pix_ptr;
+    const u8 far *mask_ptr;
+    const u8 far *row_pixels_even;
+    const u8 far *row_pixels_odd;
+    const u8 far *row_mask_even;
+    const u8 far *row_mask_odd;
+    const u8 far *temp_mask;
+    const u8 far *temp_pix;
+    u8 *dst;
+    int count;
+    u8 m;
+    u8 p;
+
+    /* Parallax effect: sun drops 1 pixel for every 2 background scroll pixels */
+    sun_y = -48 + (scroll_pixels >> 1);
+    sun_x_byte = 26; /* Fixed X position at 104px (byte 26) */
+    visible_byte_count = BG_SUN_frames[0].bytes_per_row;
+
+    row_pixels_even = BG_SUN_pixels_even + BG_SUN_frames[0].pixel_even_offset;
+    row_pixels_odd  = BG_SUN_pixels_odd  + BG_SUN_frames[0].pixel_odd_offset;
+    row_mask_even   = BG_SUN_mask_even   + BG_SUN_frames[0].mask_even_offset;
+    row_mask_odd    = BG_SUN_mask_odd    + BG_SUN_frames[0].mask_odd_offset;
+
+    for (row = 0; row < (int)BG_SUN_frames[0].height; ++row) {
+        dst_y = sun_y + row;
+        
+        if (row & 1) {
+            pix_ptr = row_pixels_odd;
+            mask_ptr = row_mask_odd;
+            row_pixels_odd += visible_byte_count;
+            row_mask_odd += visible_byte_count;
+        } else {
+            pix_ptr = row_pixels_even;
+            mask_ptr = row_mask_even;
+            row_pixels_even += visible_byte_count;
+            row_mask_even += visible_byte_count;
+        }
+
+        if (dst_y < start_row || dst_y >= start_row + row_count) {
+            continue;
+        }
+        if (dst_y < 0 || dst_y >= TOP_VIEW_HEIGHT) {
+            continue;
+        }
+
+        if (write_clean) {
+            dst = &clean_background_buffer[dst_y][sun_x_byte];
+            count = visible_byte_count;
+            temp_mask = mask_ptr;
+            temp_pix = pix_ptr;
+            while (count--) {
+                m = *temp_mask++;
+                if (m == 0xFF) {
+                    temp_pix++;
+                    dst++;
+                } else {
+                    p = *temp_pix++;
+                    if (m == 0x00) {
+                        *dst++ = p;
+                    } else {
+                        *dst = (*dst & m) | p;
+                        dst++;
+                    }
+                }
+            }
+        }
+        
+        if (write_top) {
+            dst = &top_backbuffer[dst_y][sun_x_byte];
+            count = visible_byte_count;
+            temp_mask = mask_ptr;
+            temp_pix = pix_ptr;
+            while (count--) {
+                m = *temp_mask++;
+                if (m == 0xFF) {
+                    temp_pix++;
+                    dst++;
+                } else {
+                    p = *temp_pix++;
+                    if (m == 0x00) {
+                        *dst++ = p;
+                    } else {
+                        *dst = (*dst & m) | p;
+                        dst++;
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void compose_background(u16 scroll_pixels)
 {
     int screen_y;
@@ -121,6 +220,9 @@ static void compose_background(u16 scroll_pixels)
         }
         dst_ptr += BYTES_PER_SCANLINE;
     }
+
+    /* Draw Parallax Sun purely to Top Buffer; it will be cloned to Clean */
+    draw_sun_slice(scroll_pixels, 0, TOP_VIEW_HEIGHT, 0, 1);
 }
 
 static void compose_background_rows(u16 scroll_pixels, u16 start_row, u16 row_count, u8 write_top_buffer)
@@ -156,6 +258,9 @@ static void compose_background_rows(u16 scroll_pixels, u16 start_row, u16 row_co
         clean_ptr += BYTES_PER_SCANLINE;
         top_ptr += BYTES_PER_SCANLINE;
     }
+
+    /* Update Parallax Sun dynamically onto the drawn background slices */
+    draw_sun_slice(scroll_pixels, start_row, row_count, 1, write_top_buffer);
 }
 
 static void invalidate_rect(Rect *rect)
@@ -478,14 +583,14 @@ static void blit_top_half(const GameContext *game)
 
     backbuffer_ptr = top_backbuffer[0];
     for (row = 0; row < TOP_VIEW_HEIGHT; row += 2) {
-        _fmemcpy(MK_FP(CGA_SEGMENT, even_offset), (void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
+        _fmemcpy(MK_FP(CGA_SEGMENT, even_offset), (const void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
         even_offset += BYTES_PER_SCANLINE;
         backbuffer_ptr += (BYTES_PER_SCANLINE * 2);
     }
 
     backbuffer_ptr = top_backbuffer[1];
     for (row = 1; row < TOP_VIEW_HEIGHT; row += 2) {
-        _fmemcpy(MK_FP(CGA_SEGMENT, odd_offset), (void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
+        _fmemcpy(MK_FP(CGA_SEGMENT, odd_offset), (const void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
         odd_offset += BYTES_PER_SCANLINE;
         backbuffer_ptr += (BYTES_PER_SCANLINE * 2);
     }

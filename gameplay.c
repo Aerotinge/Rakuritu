@@ -443,7 +443,7 @@ void init_game(GameContext *game)
 {
     memset(game, 0, sizeof(*game));
     game->state = GAME_STATE_PLAYER_ENTRY;
-    game->background_scroll_pixels = 120;
+    game->background_scroll_pixels = 96;
     game->rendered_background_scroll_pixels = 0xFFFF;
     game->video_wait_vblank = 1;
     init_default_bindings(&game->bindings);

@@ -34,7 +34,7 @@ typedef unsigned long  u32;
 #define SPEED_1X_FP               ((80L << FP_SHIFT) / LOGIC_HZ)
 #define SPEED_15X_FP              ((120L << FP_SHIFT) / LOGIC_HZ)
 #define SPEED_2X_FP               ((160L << FP_SHIFT) / LOGIC_HZ)
-#define PLAYER_HOME_X             64
+#define PLAYER_HOME_X             80
 #define PLAYER_BASELINE_Y         100
 #define PLAYER_ENTRY_START_X      (-96)
 #define PLAYER_ENTRY_SPEED_FP     SPEED_1X_FP
