@@ -184,7 +184,8 @@ typedef struct GameContext {
     u16 state_tick;
     u16 kill_counter;
     u16 karma_counter;
-    u16 rng; /* Replaced massive 32-bit PRNG with fast 16-bit PRNG */
+    u16 rng; 
+    int sun_y;   /* Centralized derived parallax coordinate */
     InputBindings bindings;
     InputSnapshot input;
     PlayerRuntime player;

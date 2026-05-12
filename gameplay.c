@@ -69,11 +69,10 @@ static u16 rng_next_u16(GameContext *game)
 {
     u16 lsb;
     
-    /* 16-bit Galois LFSR: lightning fast natively on 8088 */
     lsb = game->rng & 1;
     game->rng >>= 1;
     if (lsb) {
-        game->rng ^= 0xB400; /* Taps at 16, 14, 13, 11 */
+        game->rng ^= 0xB400;
     }
     return game->rng;
 }
@@ -280,6 +279,8 @@ static void update_background(GameContext *game)
         game->background_scroll_ticks = 0;
         if (game->background_scroll_pixels < ISSEN_BG_STRIP_HEIGHT) {
             ++game->background_scroll_pixels;
+            /* Calculate derived sun coordinate exactly once per background scroll */
+            game->sun_y = -48 + (game->background_scroll_pixels >> 1);
         }
     }
 }
@@ -444,6 +445,7 @@ void init_game(GameContext *game)
     memset(game, 0, sizeof(*game));
     game->state = GAME_STATE_PLAYER_ENTRY;
     game->background_scroll_pixels = 96;
+    game->sun_y = -48 + (96 >> 1);
     game->rendered_background_scroll_pixels = 0xFFFF;
     game->video_wait_vblank = 1;
     init_default_bindings(&game->bindings);
