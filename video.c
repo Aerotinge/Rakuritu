@@ -852,7 +852,7 @@ static u8 get_shadow_repeat_count(int sun_y)
     return 0;
 }
 
-static void build_shadow_rect_from_odd_rows(const AnimationAsset *animation, u16 frame_index, int draw_x, u8 repeat_count, Rect *out_rect)
+static void build_shadow_rect_from_even_rows(const AnimationAsset *animation, u16 frame_index, int draw_x, u8 repeat_count, Rect *out_rect)
 {
     const PackedSpriteFrame far *frame_meta;
     int shadow_height;
@@ -863,7 +863,7 @@ static void build_shadow_rect_from_odd_rows(const AnimationAsset *animation, u16
     }
 
     frame_meta = animation->frames + (frame_index % animation->frame_count);
-    shadow_height = (int)frame_meta->odd_row_count * repeat_count;
+    shadow_height = (int)frame_meta->even_row_count * repeat_count;
 
     out_rect->x = draw_x & ~3;
     out_rect->y = FLOOR_VIEW_Y;
@@ -873,10 +873,10 @@ static void build_shadow_rect_from_odd_rows(const AnimationAsset *animation, u16
     clip_rect_to_floor_area(out_rect);
 }
 
-static void draw_shadow_from_odd_rows(const AnimationAsset *animation, u16 frame_index, int draw_x, u8 repeat_count, Rect *out_rect)
+static void draw_shadow_from_even_rows(const AnimationAsset *animation, u16 frame_index, int draw_x, u8 repeat_count, Rect *out_rect)
 {
     const PackedSpriteFrame far *frame_meta;
-    const u8 far *frame_mask_odd;
+    const u8 far *frame_mask_even;
     const u8 far *mask_row_ptr;
     u8 *dst_ptr;
     int src_start_byte;
@@ -889,7 +889,7 @@ static void draw_shadow_from_odd_rows(const AnimationAsset *animation, u16 frame
     int count;
     u8 m;
 
-    build_shadow_rect_from_odd_rows(animation, frame_index, draw_x, repeat_count, out_rect);
+    build_shadow_rect_from_even_rows(animation, frame_index, draw_x, repeat_count, out_rect);
     if (out_rect->valid == 0) {
         return;
     }
@@ -920,12 +920,12 @@ static void draw_shadow_from_odd_rows(const AnimationAsset *animation, u16 frame
         return;
     }
 
-    frame_mask_odd = animation->mask_odd + frame_meta->mask_odd_offset + src_start_byte;
+    frame_mask_even = animation->mask_even + frame_meta->mask_even_offset + src_start_byte;
 
-    for (source_row = (int)frame_meta->odd_row_count - 1; source_row >= 0; --source_row) {
-        mask_row_ptr = frame_mask_odd + (source_row * frame_meta->bytes_per_row);
+    for (source_row = (int)frame_meta->even_row_count - 1; source_row >= 0; --source_row) {
+        mask_row_ptr = frame_mask_even + (source_row * frame_meta->bytes_per_row);
         for (repeat_index = 0; repeat_index < repeat_count; ++repeat_index) {
-            dst_y = FLOOR_VIEW_Y + (((int)frame_meta->odd_row_count - 1 - source_row) * repeat_count) + repeat_index;
+            dst_y = FLOOR_VIEW_Y + (((int)frame_meta->even_row_count - 1 - source_row) * repeat_count) + repeat_index;
             if (dst_y < FLOOR_VIEW_Y || dst_y >= SCREEN_HEIGHT) {
                 continue;
             }
@@ -1050,18 +1050,18 @@ static void render_active_scene(GameContext *game)
 
     floor_dirty_rect = union_floor_rects(g_previous_player_shadow_rect, g_previous_opponent_shadow_rect);
     if (!game->low_detail && shadow_repeat_count != 0) {
-        build_shadow_rect_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &current_player_shadow_rect);
+        build_shadow_rect_from_even_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &current_player_shadow_rect);
         if (game->opponent.active) {
-            build_shadow_rect_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &current_opponent_shadow_rect);
+            build_shadow_rect_from_even_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &current_opponent_shadow_rect);
         }
     }
     floor_dirty_rect = union_floor_rects(floor_dirty_rect, union_floor_rects(current_player_shadow_rect, current_opponent_shadow_rect));
     restore_rect_from_floor(&floor_dirty_rect);
 
     if (!game->low_detail && shadow_repeat_count != 0) {
-        draw_shadow_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &current_player_shadow_rect);
+        draw_shadow_from_even_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &current_player_shadow_rect);
         if (game->opponent.active) {
-            draw_shadow_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &current_opponent_shadow_rect);
+            draw_shadow_from_even_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &current_opponent_shadow_rect);
         }
     }
     if (floor_dirty_rect.valid) {
@@ -1198,22 +1198,22 @@ void render_floor_step(GameContext *game)
     if (!game->low_detail && shadow_repeat_count != 0) {
         player_anim = get_player_animation(game->player.anim_mode);
         player_frame = get_player_frame_index(game, player_anim);
-        build_shadow_rect_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);
+        build_shadow_rect_from_even_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);
 
         if (player_shadow_rect.valid &&
             player_shadow_rect.y < (int)(FLOOR_VIEW_Y + step_start_row + step_row_count) &&
             (player_shadow_rect.y + player_shadow_rect.height) > (int)(FLOOR_VIEW_Y + step_start_row)) {
-            draw_shadow_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);
+            draw_shadow_from_even_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);
         }
 
         if (game->opponent.active) {
             opp_anim = get_opponent_animation(&game->opponent);
             opp_frame = get_opponent_frame_index(game, opp_anim);
-            build_shadow_rect_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &opponent_shadow_rect);
+            build_shadow_rect_from_even_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &opponent_shadow_rect);
             if (opponent_shadow_rect.valid &&
                 opponent_shadow_rect.y < (int)(FLOOR_VIEW_Y + step_start_row + step_row_count) &&
                 (opponent_shadow_rect.y + opponent_shadow_rect.height) > (int)(FLOOR_VIEW_Y + step_start_row)) {
-                draw_shadow_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &opponent_shadow_rect);
+                draw_shadow_from_even_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &opponent_shadow_rect);
             }
         }
     }
