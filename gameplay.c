@@ -447,6 +447,7 @@ void init_game(GameContext *game)
     game->background_scroll_pixels = 0;
     game->sun_y = 0;
     game->rendered_background_scroll_pixels = 0xFFFF;
+    game->rendered_floor_phase = 0xFFFF;
     game->video_wait_vblank = 1;
     init_default_bindings(&game->bindings);
     game->rng = seed_rng();

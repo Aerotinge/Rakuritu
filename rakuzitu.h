@@ -12,6 +12,8 @@ typedef unsigned long  u32;
 #define SCREEN_HEIGHT             200
 #define BYTES_PER_SCANLINE        (SCREEN_WIDTH / 4)
 #define TOP_VIEW_HEIGHT           100
+#define FLOOR_VIEW_Y              101
+#define FLOOR_VIEW_HEIGHT         99
 #define CGA_SEGMENT               0xB800
 #define CGA_ODD_OFFSET            0x2000
 #define BLACK_BYTE                0x00
@@ -20,6 +22,7 @@ typedef unsigned long  u32;
 #define LOGIC_HZ                  30
 #define RENDER_SLOT_HZ            15
 #define BACKGROUND_BAND_HZ        6
+#define FLOOR_BAND_HZ             4
 #define PIT_INPUT_HZ              1193180UL
 #define PIT_BIOS_DIVISOR          65536UL
 #define PIT_BASE_DIVISOR          ((u16)(PIT_INPUT_HZ / BASE_TIMER_HZ))
@@ -178,6 +181,7 @@ typedef struct GameContext {
     u16 background_scroll_ticks;
     u16 background_scroll_pixels;
     u16 rendered_background_scroll_pixels;
+    u16 rendered_floor_phase;
     u8 video_wait_vblank;
     u8 exit_requested;
     u8 gameover_drawn;
@@ -214,6 +218,7 @@ void set_video_mode(u8 mode);
 void init_cga_mode5(void);
 void render_foreground(GameContext *game);
 void render_background_step(GameContext *game);
+void render_floor_step(GameContext *game);
 void draw_ui_frame_once(void);
 
 void init_timer(void);

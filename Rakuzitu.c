@@ -7,17 +7,21 @@ static void run_game_loop(void)
     u8 logic_divider_count;
     u8 render_divider_count;
     u8 background_divider_count;
+    u8 floor_divider_count;
     u8 base_ticks_to_process;
     u8 base_ticks_processed;
     u8 foreground_due;
     u8 background_pending;
+    u8 floor_pending;
     u8 grabbed_ticks;
     u16 backlog;
 
     logic_divider_count = 0;
     render_divider_count = 0;
     background_divider_count = 0;
+    floor_divider_count = 0;
     background_pending = 0;
+    floor_pending = 1;
 
     draw_ui_frame_once();
 
@@ -67,6 +71,14 @@ static void run_game_loop(void)
                     background_pending = 1;
                 }
             }
+
+            ++floor_divider_count;
+            if (floor_divider_count >= (BASE_TIMER_HZ / FLOOR_BAND_HZ)) {
+                floor_divider_count = 0;
+                if (g_game.state != GAME_STATE_PLAYER_DYING && g_game.state != GAME_STATE_GAMEOVER) {
+                    floor_pending = 1;
+                }
+            }
         }
 
         if (foreground_due && !g_game.exit_requested) {
@@ -76,6 +88,9 @@ static void run_game_loop(void)
         } else if (background_pending && !g_game.exit_requested) {
             render_background_step(&g_game);
             background_pending = 0;
+        } else if (floor_pending && !g_game.exit_requested) {
+            render_floor_step(&g_game);
+            floor_pending = 0;
         }
     }
 }

@@ -6,8 +6,11 @@
 
 static u8 top_backbuffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u8 clean_background_buffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
+static u8 floor_backbuffer[FLOOR_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u16 g_background_step_row = 0;
+static u16 g_floor_step_row = FLOOR_VIEW_HEIGHT;
 static const u16 BACKGROUND_STEP_ROWS = 25;
+static const u16 FLOOR_STEP_ROWS = 25;
 
 /* 2D LUT: g_recolor_lut[color2_replacement][color3_replacement][packed_byte] */
 static u8 g_recolor_lut[4][4][256];
@@ -85,6 +88,11 @@ static void wait_vblank(void)
 static void fill_scanline(u8 *dst, u8 value)
 {
     memset(dst, value, BYTES_PER_SCANLINE);
+}
+
+static void fill_horizon_scanline(u8 *dst)
+{
+    memset(dst, BLACK_BYTE, BYTES_PER_SCANLINE);
 }
 
 static void tile_strip_row(u8 *dst, const u8 far *row_pattern)
@@ -648,37 +656,84 @@ static void blit_rect_to_vram(const Rect *rect, const GameContext *game)
     }
 }
 
-void draw_ui_frame_once(void)
+static void blit_floor_rows_to_vram(u16 start_row, u16 row_count, const GameContext *game)
 {
-    static u8 ui_scanline[BYTES_PER_SCANLINE];
     u16 screen_y;
-    u16 offset;
-    u16 x;
     u16 offset_even;
     u16 offset_odd;
+    u16 current_offset;
+    const u8 *backbuffer_ptr;
 
-    fill_scanline(ui_scanline, WHITE_BYTE);
-    for (x = 20; x < 30; ++x) {
-        ui_scanline[x] = BLACK_BYTE;
-        ui_scanline[x + 12] = BLACK_BYTE;
-        ui_scanline[x + 24] = BLACK_BYTE;
+    if (row_count == 0) {
+        return;
     }
 
-    offset_even = (TOP_VIEW_HEIGHT >> 1) * BYTES_PER_SCANLINE;
+    if (game->video_wait_vblank) {
+        wait_vblank();
+    }
+
+    screen_y = (u16)(FLOOR_VIEW_Y + start_row);
+    offset_even = (u16)((screen_y >> 1) * BYTES_PER_SCANLINE);
     offset_odd = offset_even + CGA_ODD_OFFSET;
+    if (screen_y & 1) {
+        offset_even += BYTES_PER_SCANLINE;
+    }
 
-    wait_vblank();
-
-    for (screen_y = TOP_VIEW_HEIGHT; screen_y < SCREEN_HEIGHT; ++screen_y) {
+    backbuffer_ptr = &floor_backbuffer[start_row][0];
+    while (row_count--) {
         if (screen_y & 1) {
-            offset = offset_odd;
+            current_offset = offset_odd;
             offset_odd += BYTES_PER_SCANLINE;
         } else {
-            offset = offset_even;
+            current_offset = offset_even;
             offset_even += BYTES_PER_SCANLINE;
         }
-        _fmemcpy(MK_FP(CGA_SEGMENT, offset), (const void far *)ui_scanline, BYTES_PER_SCANLINE);
+
+        _fmemcpy(MK_FP(CGA_SEGMENT, current_offset), (const void far *)backbuffer_ptr, BYTES_PER_SCANLINE);
+        backbuffer_ptr += BYTES_PER_SCANLINE;
+        ++screen_y;
     }
+}
+
+static int get_floor_phase_rows(const GameContext *game)
+{
+    return (int)((game->background_scroll_pixels / 32U) * 32U);
+}
+
+static void compose_floor_rows(const GameContext *game, u16 start_row, u16 row_count)
+{
+    int base_top;
+    int phase_rows;
+    int window_top;
+    u16 local_row;
+    int floor_row;
+    int source_y;
+
+    base_top = BG_STRIP_HEIGHT - 208;
+    phase_rows = get_floor_phase_rows(game);
+    window_top = base_top - phase_rows;
+
+    for (local_row = 0; local_row < row_count; ++local_row) {
+        floor_row = (int)start_row + (int)local_row;
+        source_y = window_top + (FLOOR_VIEW_HEIGHT - 1) - floor_row;
+
+        if (source_y < 0 || source_y >= BG_STRIP_HEIGHT) {
+            fill_scanline(floor_backbuffer[floor_row], BLACK_BYTE);
+        } else {
+            tile_strip_row(floor_backbuffer[floor_row], bg_strip_pixels[source_y]);
+        }
+    }
+}
+
+void draw_ui_frame_once(void)
+{
+    static u8 horizon_scanline[BYTES_PER_SCANLINE];
+    u16 offset;
+    fill_horizon_scanline(horizon_scanline);
+    offset = (u16)((TOP_VIEW_HEIGHT >> 1) * BYTES_PER_SCANLINE);
+
+    wait_vblank();
+    _fmemcpy(MK_FP(CGA_SEGMENT, offset), (const void far *)horizon_scanline, BYTES_PER_SCANLINE);
 }
 
 static void draw_gameover_fullscreen(const GameContext *game)
@@ -849,5 +904,39 @@ void render_background_step(GameContext *game)
     if (g_background_step_row >= TOP_VIEW_HEIGHT) {
         game->rendered_background_scroll_pixels = game->background_scroll_pixels;
         g_background_step_row = 0;
+    }
+}
+
+void render_floor_step(GameContext *game)
+{
+    u16 step_start_row;
+    u16 step_row_count;
+    u16 current_phase;
+
+    if (game->state == GAME_STATE_GAMEOVER || game->state == GAME_STATE_PLAYER_DYING) {
+        return;
+    }
+
+    current_phase = (u16)get_floor_phase_rows(game);
+    if (game->rendered_floor_phase == current_phase && g_floor_step_row >= FLOOR_VIEW_HEIGHT) {
+        return;
+    }
+    if (g_floor_step_row == 0 || g_floor_step_row > FLOOR_VIEW_HEIGHT) {
+        g_floor_step_row = FLOOR_VIEW_HEIGHT;
+    }
+
+    step_row_count = FLOOR_STEP_ROWS;
+    if (step_row_count > g_floor_step_row) {
+        step_row_count = g_floor_step_row;
+    }
+    step_start_row = g_floor_step_row - step_row_count;
+
+    compose_floor_rows(game, step_start_row, step_row_count);
+    blit_floor_rows_to_vram(step_start_row, step_row_count, game);
+
+    g_floor_step_row -= step_row_count;
+    if (g_floor_step_row == 0) {
+        game->rendered_floor_phase = current_phase;
+        g_floor_step_row = FLOOR_VIEW_HEIGHT;
     }
 }
