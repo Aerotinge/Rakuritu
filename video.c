@@ -7,10 +7,13 @@
 static u8 top_backbuffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u8 clean_background_buffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u8 floor_backbuffer[FLOOR_VIEW_HEIGHT][BYTES_PER_SCANLINE];
+static u8 clean_floor_buffer[FLOOR_VIEW_HEIGHT][BYTES_PER_SCANLINE];
 static u16 g_background_step_row = 0;
 static u16 g_floor_step_row = FLOOR_VIEW_HEIGHT;
 static const u16 BACKGROUND_STEP_ROWS = 25;
 static const u16 FLOOR_STEP_ROWS = 25;
+static Rect g_previous_player_shadow_rect = { 0, 0, 0, 0, 0 };
+static Rect g_previous_opponent_shadow_rect = { 0, 0, 0, 0, 0 };
 
 /* 2D LUT: g_recolor_lut[color2_replacement][color3_replacement][packed_byte] */
 static u8 g_recolor_lut[4][4][256];
@@ -323,6 +326,46 @@ static void clip_rect_to_top_area(Rect *rect)
     rect->height = y2 - y1;
 }
 
+static void clip_rect_to_floor_area(Rect *rect)
+{
+    int x1;
+    int y1;
+    int x2;
+    int y2;
+
+    if (rect->valid == 0) {
+        return;
+    }
+
+    x1 = rect->x;
+    y1 = rect->y;
+    x2 = rect->x + rect->width;
+    y2 = rect->y + rect->height;
+
+    if (x1 < 0) {
+        x1 = 0;
+    }
+    if (y1 < FLOOR_VIEW_Y) {
+        y1 = FLOOR_VIEW_Y;
+    }
+    if (x2 > SCREEN_WIDTH) {
+        x2 = SCREEN_WIDTH;
+    }
+    if (y2 > SCREEN_HEIGHT) {
+        y2 = SCREEN_HEIGHT;
+    }
+
+    if (x2 <= x1 || y2 <= y1) {
+        invalidate_rect(rect);
+        return;
+    }
+
+    rect->x = x1;
+    rect->y = y1;
+    rect->width = x2 - x1;
+    rect->height = y2 - y1;
+}
+
 static Rect union_rects(Rect a, Rect b)
 {
     Rect out;
@@ -353,6 +396,36 @@ static Rect union_rects(Rect a, Rect b)
     return out;
 }
 
+static Rect union_floor_rects(Rect a, Rect b)
+{
+    Rect out;
+    int x1;
+    int y1;
+    int x2;
+    int y2;
+
+    if (a.valid == 0) {
+        return b;
+    }
+    if (b.valid == 0) {
+        return a;
+    }
+
+    x1 = (a.x < b.x) ? a.x : b.x;
+    y1 = (a.y < b.y) ? a.y : b.y;
+    x2 = ((a.x + a.width) > (b.x + b.width)) ? (a.x + a.width) : (b.x + b.width);
+    y2 = ((a.y + a.height) > (b.y + b.height)) ? (a.y + a.height) : (b.y + b.height);
+
+    out.x = x1;
+    out.y = y1;
+    out.width = x2 - x1;
+    out.height = y2 - y1;
+    out.valid = 1;
+    clip_rect_to_floor_area(&out);
+
+    return out;
+}
+
 static void restore_rect_from_background(const Rect *rect)
 {
     int row;
@@ -374,6 +447,35 @@ static void restore_rect_from_background(const Rect *rect)
     src = &clean_background_buffer[rect->y][start_byte];
 
     for (row = rect->y; row < rect->y + rect->height; ++row) {
+        memcpy(dst, src, (size_t)byte_count);
+        dst += BYTES_PER_SCANLINE;
+        src += BYTES_PER_SCANLINE;
+    }
+}
+
+static void restore_rect_from_floor(const Rect *rect)
+{
+    int row;
+    int local_y;
+    int start_byte;
+    int end_byte;
+    int byte_count;
+    u8 *dst;
+    const u8 *src;
+
+    if (rect == NULL || rect->valid == 0) {
+        return;
+    }
+
+    start_byte = rect->x >> 2;
+    end_byte = (rect->x + rect->width + 3) >> 2;
+    byte_count = end_byte - start_byte;
+    local_y = rect->y - FLOOR_VIEW_Y;
+
+    dst = &floor_backbuffer[local_y][start_byte];
+    src = &clean_floor_buffer[local_y][start_byte];
+
+    for (row = 0; row < rect->height; ++row) {
         memcpy(dst, src, (size_t)byte_count);
         dst += BYTES_PER_SCANLINE;
         src += BYTES_PER_SCANLINE;
@@ -718,9 +820,126 @@ static void compose_floor_rows(const GameContext *game, u16 start_row, u16 row_c
         source_y = window_top + (FLOOR_VIEW_HEIGHT - 1) - floor_row;
 
         if (source_y < 0 || source_y >= BG_STRIP_HEIGHT) {
-            fill_scanline(floor_backbuffer[floor_row], BLACK_BYTE);
+            fill_scanline(clean_floor_buffer[floor_row], BLACK_BYTE);
         } else {
-            tile_strip_row(floor_backbuffer[floor_row], bg_strip_pixels[source_y]);
+            tile_strip_row(clean_floor_buffer[floor_row], bg_strip_pixels[source_y]);
+        }
+    }
+}
+
+static void refresh_floor_buffer(GameContext *game, u8 blit_now)
+{
+    compose_floor_rows(game, 0, FLOOR_VIEW_HEIGHT);
+    memcpy(floor_backbuffer, clean_floor_buffer, sizeof(floor_backbuffer));
+    game->rendered_floor_phase = (u16)get_floor_phase_rows(game);
+    g_floor_step_row = FLOOR_VIEW_HEIGHT;
+    if (blit_now) {
+        blit_floor_rows_to_vram(0, FLOOR_VIEW_HEIGHT, game);
+    }
+}
+
+static u8 get_shadow_repeat_count(int sun_y)
+{
+    if (sun_y < 26) {
+        return 3;
+    }
+    if (sun_y < 53) {
+        return 4;
+    }
+    if (sun_y < 80) {
+        return 5;
+    }
+    return 0;
+}
+
+static void build_shadow_rect_from_odd_rows(const AnimationAsset *animation, u16 frame_index, int draw_x, u8 repeat_count, Rect *out_rect)
+{
+    const PackedSpriteFrame far *frame_meta;
+    int shadow_height;
+
+    if (animation == NULL || repeat_count == 0) {
+        invalidate_rect(out_rect);
+        return;
+    }
+
+    frame_meta = animation->frames + (frame_index % animation->frame_count);
+    shadow_height = (int)frame_meta->odd_row_count * repeat_count;
+
+    out_rect->x = draw_x & ~3;
+    out_rect->y = FLOOR_VIEW_Y;
+    out_rect->width = frame_meta->width;
+    out_rect->height = shadow_height;
+    out_rect->valid = 1;
+    clip_rect_to_floor_area(out_rect);
+}
+
+static void draw_shadow_from_odd_rows(const AnimationAsset *animation, u16 frame_index, int draw_x, u8 repeat_count, Rect *out_rect)
+{
+    const PackedSpriteFrame far *frame_meta;
+    const u8 far *frame_mask_odd;
+    const u8 far *mask_row_ptr;
+    u8 *dst_ptr;
+    int src_start_byte;
+    int dst_x_byte;
+    int visible_byte_count;
+    int clip_right_byte;
+    int source_row;
+    int repeat_index;
+    int dst_y;
+    int count;
+    u8 m;
+
+    build_shadow_rect_from_odd_rows(animation, frame_index, draw_x, repeat_count, out_rect);
+    if (out_rect->valid == 0) {
+        return;
+    }
+
+    frame_meta = animation->frames + (frame_index % animation->frame_count);
+    if ((draw_x & 3) != 0) {
+        draw_x &= ~3;
+    }
+
+    src_start_byte = 0;
+    dst_x_byte = draw_x >> 2;
+
+    if (draw_x < 0) {
+        src_start_byte = (-draw_x) >> 2;
+        dst_x_byte = 0;
+    }
+
+    visible_byte_count = (int)frame_meta->bytes_per_row - src_start_byte;
+    if (visible_byte_count <= 0) {
+        return;
+    }
+
+    clip_right_byte = BYTES_PER_SCANLINE - dst_x_byte;
+    if (visible_byte_count > clip_right_byte) {
+        visible_byte_count = clip_right_byte;
+    }
+    if (visible_byte_count <= 0) {
+        return;
+    }
+
+    frame_mask_odd = animation->mask_odd + frame_meta->mask_odd_offset + src_start_byte;
+
+    for (source_row = (int)frame_meta->odd_row_count - 1; source_row >= 0; --source_row) {
+        mask_row_ptr = frame_mask_odd + (source_row * frame_meta->bytes_per_row);
+        for (repeat_index = 0; repeat_index < repeat_count; ++repeat_index) {
+            dst_y = FLOOR_VIEW_Y + (((int)frame_meta->odd_row_count - 1 - source_row) * repeat_count) + repeat_index;
+            if (dst_y < FLOOR_VIEW_Y || dst_y >= SCREEN_HEIGHT) {
+                continue;
+            }
+
+            dst_ptr = &floor_backbuffer[dst_y - FLOOR_VIEW_Y][dst_x_byte];
+            count = visible_byte_count;
+            while (count--) {
+                m = *mask_row_ptr++;
+                if (m != 0xFF) {
+                    *dst_ptr &= m;
+                }
+                ++dst_ptr;
+            }
+            mask_row_ptr -= visible_byte_count;
         }
     }
 }
@@ -761,16 +980,23 @@ static void render_active_scene(GameContext *game)
     Rect current_player_rect;
     Rect current_opponent_rect;
     Rect dirty_rect;
+    Rect current_player_shadow_rect;
+    Rect current_opponent_shadow_rect;
+    Rect floor_dirty_rect;
     u8 background_changed;
     u16 player_frame;
     u16 opp_frame;
     const AnimationAsset *player_anim;
     const AnimationAsset *opp_anim;
     u8 body_color;
+    u8 shadow_repeat_count;
 
     background_changed = (game->rendered_background_scroll_pixels == 0xFFFF);
     if (background_changed) {
         refresh_clean_background(game);
+    }
+    if (game->rendered_floor_phase == 0xFFFF) {
+        refresh_floor_buffer(game, 1);
     }
 
     /* Set body color: 0 (Black) when silhouetted, 3 (White/Grey) when normal */
@@ -778,9 +1004,12 @@ static void render_active_scene(GameContext *game)
 
     invalidate_rect(&current_player_rect);
     invalidate_rect(&current_opponent_rect);
+    invalidate_rect(&current_player_shadow_rect);
+    invalidate_rect(&current_opponent_shadow_rect);
     
     player_anim = get_player_animation(game->player.anim_mode);
     build_player_sprite(game, &current_player_rect, &player_frame);
+    shadow_repeat_count = get_shadow_repeat_count(game->sun_y);
     
     if (game->opponent.active) {
         build_opponent_sprite(game, &current_opponent_rect, &opp_frame);
@@ -819,8 +1048,30 @@ static void render_active_scene(GameContext *game)
         blit_rect_to_vram(&dirty_rect, game);
     }
 
+    floor_dirty_rect = union_floor_rects(g_previous_player_shadow_rect, g_previous_opponent_shadow_rect);
+    if (!game->low_detail && shadow_repeat_count != 0) {
+        build_shadow_rect_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &current_player_shadow_rect);
+        if (game->opponent.active) {
+            build_shadow_rect_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &current_opponent_shadow_rect);
+        }
+    }
+    floor_dirty_rect = union_floor_rects(floor_dirty_rect, union_floor_rects(current_player_shadow_rect, current_opponent_shadow_rect));
+    restore_rect_from_floor(&floor_dirty_rect);
+
+    if (!game->low_detail && shadow_repeat_count != 0) {
+        draw_shadow_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &current_player_shadow_rect);
+        if (game->opponent.active) {
+            draw_shadow_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &current_opponent_shadow_rect);
+        }
+    }
+    if (floor_dirty_rect.valid) {
+        blit_floor_rows_to_vram((u16)(floor_dirty_rect.y - FLOOR_VIEW_Y), (u16)floor_dirty_rect.height, game);
+    }
+
     game->previous_player_rect = game->player.rect;
     game->previous_opponent_rect = game->opponent.rect;
+    g_previous_player_shadow_rect = current_player_shadow_rect;
+    g_previous_opponent_shadow_rect = current_opponent_shadow_rect;
 }
 
 void render_foreground(GameContext *game)
@@ -909,13 +1160,22 @@ void render_background_step(GameContext *game)
 
 void render_floor_step(GameContext *game)
 {
+    Rect player_shadow_rect;
+    Rect opponent_shadow_rect;
+    const AnimationAsset *player_anim;
+    const AnimationAsset *opp_anim;
+    u16 player_frame;
+    u16 opp_frame;
     u16 step_start_row;
     u16 step_row_count;
     u16 current_phase;
+    u8 shadow_repeat_count;
 
     if (game->state == GAME_STATE_GAMEOVER || game->state == GAME_STATE_PLAYER_DYING) {
         return;
     }
+    invalidate_rect(&player_shadow_rect);
+    invalidate_rect(&opponent_shadow_rect);
 
     current_phase = (u16)get_floor_phase_rows(game);
     if (game->rendered_floor_phase == current_phase && g_floor_step_row >= FLOOR_VIEW_HEIGHT) {
@@ -932,6 +1192,31 @@ void render_floor_step(GameContext *game)
     step_start_row = g_floor_step_row - step_row_count;
 
     compose_floor_rows(game, step_start_row, step_row_count);
+    memcpy(&floor_backbuffer[step_start_row][0], &clean_floor_buffer[step_start_row][0], (size_t)(step_row_count * BYTES_PER_SCANLINE));
+
+    shadow_repeat_count = get_shadow_repeat_count(game->sun_y);
+    if (!game->low_detail && shadow_repeat_count != 0) {
+        player_anim = get_player_animation(game->player.anim_mode);
+        player_frame = get_player_frame_index(game, player_anim);
+        build_shadow_rect_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);
+
+        if (player_shadow_rect.valid &&
+            player_shadow_rect.y < (int)(FLOOR_VIEW_Y + step_start_row + step_row_count) &&
+            (player_shadow_rect.y + player_shadow_rect.height) > (int)(FLOOR_VIEW_Y + step_start_row)) {
+            draw_shadow_from_odd_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);
+        }
+
+        if (game->opponent.active) {
+            opp_anim = get_opponent_animation(&game->opponent);
+            opp_frame = get_opponent_frame_index(game, opp_anim);
+            build_shadow_rect_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &opponent_shadow_rect);
+            if (opponent_shadow_rect.valid &&
+                opponent_shadow_rect.y < (int)(FLOOR_VIEW_Y + step_start_row + step_row_count) &&
+                (opponent_shadow_rect.y + opponent_shadow_rect.height) > (int)(FLOOR_VIEW_Y + step_start_row)) {
+                draw_shadow_from_odd_rows(opp_anim, opp_frame, fp_to_int(game->opponent.x_fp) & ~3, shadow_repeat_count, &opponent_shadow_rect);
+            }
+        }
+    }
     blit_floor_rows_to_vram(step_start_row, step_row_count, game);
 
     g_floor_step_row -= step_row_count;

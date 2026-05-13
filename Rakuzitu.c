@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "rakuzitu.h"
 
 GameContext g_game;
@@ -95,9 +97,16 @@ static void run_game_loop(void)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    int i;
+
     init_game(&g_game);
+    for (i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-lo") == 0) {
+            g_game.low_detail = 1;
+        }
+    }
     init_cga_mode5();
     init_keyboard();
     init_timer();

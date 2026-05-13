@@ -182,6 +182,7 @@ typedef struct GameContext {
     u16 background_scroll_pixels;
     u16 rendered_background_scroll_pixels;
     u16 rendered_floor_phase;
+    u8 low_detail;
     u8 video_wait_vblank;
     u8 exit_requested;
     u8 gameover_drawn;
