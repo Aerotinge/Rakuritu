@@ -1,7 +1,7 @@
 #include <string.h>
 
 #include "rakuzitu.h"
-#include "assets/issen_bg_strip.h"
+#include "assets/bg_strip.h"
 #include "assets/bg_sun.h"
 
 static u8 top_backbuffer[TOP_VIEW_HEIGHT][BYTES_PER_SCANLINE];
@@ -214,12 +214,12 @@ static void compose_background(GameContext *game)
     dst_ptr = (u8 *)top_backbuffer;
 
     for (screen_y = 0; screen_y < TOP_VIEW_HEIGHT; ++screen_y) {
-        source_y = (ISSEN_BG_STRIP_HEIGHT - TOP_VIEW_HEIGHT) + screen_y - game->background_scroll_pixels;
+        source_y = (BG_STRIP_HEIGHT - TOP_VIEW_HEIGHT) + screen_y - game->background_scroll_pixels;
 
-        if (source_y < 0 || source_y >= ISSEN_BG_STRIP_HEIGHT) {
+        if (source_y < 0 || source_y >= BG_STRIP_HEIGHT) {
             fill_scanline(dst_ptr, BLACK_BYTE);
         } else {
-            tile_strip_row(dst_ptr, issen_bg_strip_pixels[source_y]);
+            tile_strip_row(dst_ptr, bg_strip_pixels[source_y]);
         }
         dst_ptr += BYTES_PER_SCANLINE;
     }
@@ -245,17 +245,17 @@ static void compose_background_rows(GameContext *game, u16 start_row, u16 row_co
     top_ptr = top_backbuffer[start_row];
 
     for (screen_y = start_row; screen_y < end_row; ++screen_y) {
-        source_y = (ISSEN_BG_STRIP_HEIGHT - TOP_VIEW_HEIGHT) + screen_y - game->background_scroll_pixels;
+        source_y = (BG_STRIP_HEIGHT - TOP_VIEW_HEIGHT) + screen_y - game->background_scroll_pixels;
 
-        if (source_y < 0 || source_y >= ISSEN_BG_STRIP_HEIGHT) {
+        if (source_y < 0 || source_y >= BG_STRIP_HEIGHT) {
             fill_scanline(clean_ptr, BLACK_BYTE);
             if (write_top_buffer) {
                 fill_scanline(top_ptr, BLACK_BYTE);
             }
         } else {
-            tile_strip_row(clean_ptr, issen_bg_strip_pixels[source_y]);
+            tile_strip_row(clean_ptr, bg_strip_pixels[source_y]);
             if (write_top_buffer) {
-                tile_strip_row(top_ptr, issen_bg_strip_pixels[source_y]);
+                tile_strip_row(top_ptr, bg_strip_pixels[source_y]);
             }
         }
         clean_ptr += BYTES_PER_SCANLINE;
@@ -816,7 +816,7 @@ void render_background_step(GameContext *game)
     compose_background_rows(game, step_start_row, step_row_count, 1);
 
     /* Set body color: 0 (Black) when silhouetted, 3 (White/Grey) when normal */
-    body_color = (game->sun_y < -16 || game->sun_y >= 32) ? 0 : 3;
+    body_color = (game->sun_y < 56 || game->sun_y >= 120) ? 0 : 3;
 
     player_anim = get_player_animation(game->player.anim_mode);
     build_player_sprite(game, &player_rect, &player_frame);
