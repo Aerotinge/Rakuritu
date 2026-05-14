@@ -74,7 +74,10 @@ typedef enum PlayerAnimMode {
 typedef enum OpponentFigure {
     OPPONENT_FIGURE_NONE = 0,
     OPPONENT_FIGURE_WOLF,
-    OPPONENT_FIGURE_RONIN
+    OPPONENT_FIGURE_RONIN,
+	OPPONENT_FIGURE_ASHIGARU,
+	OPPONENT_FIGURE_PEASANT,
+	OPPONENT_FIGURE_TSUJIGIRI
 } OpponentFigure;
 
 typedef enum OpponentAnimMode {
@@ -211,6 +214,15 @@ extern const AnimationAsset g_wolf_death_animation;
 extern const AnimationAsset g_ronin_run_animation;
 extern const AnimationAsset g_ronin_attack_animation;
 extern const AnimationAsset g_ronin_death_animation;
+extern const AnimationAsset g_ashigaru_run_animation;
+extern const AnimationAsset g_ashigaru_attack_animation;
+extern const AnimationAsset g_ashigaru_death_animation;
+extern const AnimationAsset g_peasant_run_animation;
+extern const AnimationAsset g_peasant_attack_animation;
+extern const AnimationAsset g_peasant_death_animation;
+extern const AnimationAsset g_tsujigiri_run_animation;
+extern const AnimationAsset g_tsujigiri_attack_animation;
+extern const AnimationAsset g_tsujigiri_death_animation;
 extern const PackedSpriteFrame far *g_gameover_frame;
 extern const u8 far *g_gameover_pixels_even;
 extern const u8 far *g_gameover_pixels_odd;

@@ -27,9 +27,48 @@ static const OpponentFigureDef g_ronin_def = {
     135
 };
 
+static const OpponentFigureDef g_ashigaru_def = {
+    OPPONENT_FIGURE_ASHIGARU,
+    &g_ashigaru_run_animation,
+    &g_ashigaru_attack_animation,
+    &g_ashigaru_death_animation,
+    1,
+    SPEED_2X_FP,
+    60,
+    135,
+    135
+};
+
+static const OpponentFigureDef g_peasant_def = {
+    OPPONENT_FIGURE_PEASANT,
+    &g_peasant_run_animation,
+    &g_peasant_attack_animation,
+    &g_peasant_death_animation,
+    1,
+    SPEED_15X_FP,
+    60,
+    135,
+    135
+};
+
+static const OpponentFigureDef g_tsujigiri_def = {
+    OPPONENT_FIGURE_TSUJIGIRI,
+    &g_tsujigiri_run_animation,
+    &g_tsujigiri_attack_animation,
+    &g_tsujigiri_death_animation,
+    1,
+    SPEED_1X_FP,
+    60,
+    135,
+    135
+};
+
 static const WeightedEntry g_default_encounter_table[] = {
-    { 50, OPPONENT_FIGURE_WOLF },
-    { 50, OPPONENT_FIGURE_RONIN }
+    { 20, OPPONENT_FIGURE_WOLF },
+	{ 20, OPPONENT_FIGURE_RONIN },
+	{ 20, OPPONENT_FIGURE_ASHIGARU },
+	{ 20, OPPONENT_FIGURE_PEASANT },
+	{ 20, OPPONENT_FIGURE_TSUJIGIRI }
 };
 
 static const OpponentFigureDef *get_opponent_def(OpponentFigure figure)
@@ -39,6 +78,12 @@ static const OpponentFigureDef *get_opponent_def(OpponentFigure figure)
         return &g_wolf_def;
     case OPPONENT_FIGURE_RONIN:
         return &g_ronin_def;
+	case OPPONENT_FIGURE_ASHIGARU:
+        return &g_ashigaru_def;
+	case OPPONENT_FIGURE_PEASANT:
+        return &g_peasant_def;
+	case OPPONENT_FIGURE_TSUJIGIRI:
+        return &g_tsujigiri_def;
     default:
         return NULL;
     }
