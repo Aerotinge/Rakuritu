@@ -63,12 +63,12 @@ static const OpponentFigureDef g_tsujigiri_def = {
     135
 };
 
-static const WeightedEntry g_default_encounter_table[] = {
-    { 20, OPPONENT_FIGURE_WOLF },
-	{ 20, OPPONENT_FIGURE_RONIN },
-	{ 20, OPPONENT_FIGURE_ASHIGARU },
-	{ 20, OPPONENT_FIGURE_PEASANT },
-	{ 20, OPPONENT_FIGURE_TSUJIGIRI }
+static const OpponentFigure g_encounter_figures[] = {
+    OPPONENT_FIGURE_WOLF,
+    OPPONENT_FIGURE_RONIN,
+    OPPONENT_FIGURE_ASHIGARU,
+    OPPONENT_FIGURE_PEASANT,
+    OPPONENT_FIGURE_TSUJIGIRI
 };
 
 static const OpponentFigureDef *get_opponent_def(OpponentFigure figure)
@@ -122,27 +122,79 @@ static u16 rng_next_u16(GameContext *game)
     return game->rng;
 }
 
+static int get_dynamic_weight(const GameContext *game, OpponentFigure figure)
+{
+    int weight;
+
+    switch (figure) {
+    case OPPONENT_FIGURE_WOLF:
+        if (game->sun_y < 80) {
+            return 0;
+        }
+        return (int)game->kill_counter;
+
+    case OPPONENT_FIGURE_ASHIGARU:
+        weight = 20 + (int)game->kill_counter;
+        if (game->sun_y < 40) {
+            weight >>= 1;
+        }
+        return weight;
+
+    case OPPONENT_FIGURE_RONIN:
+        weight = 20 + (int)game->kill_counter;
+        if (game->sun_y >= 40) {
+            weight >>= 1;
+        }
+        return weight;
+
+    case OPPONENT_FIGURE_PEASANT:
+        weight = game->sun_y;
+        if (game->sun_y < 40) {
+            weight >>= 1;
+        }
+        return weight;
+
+    case OPPONENT_FIGURE_TSUJIGIRI:
+        if (game->tsujigiri_spawned || game->sun_y < 60) {
+            return 0;
+        }
+        return 1;
+
+    default:
+        return 0;
+    }
+}
+
 static OpponentFigure pick_weighted_figure(GameContext *game)
 {
     int total_weight;
     int pick;
+    int weight;
     int i;
 
-    (void)game;
     total_weight = 0;
-    for (i = 0; i < (int)(sizeof(g_default_encounter_table) / sizeof(g_default_encounter_table[0])); ++i) {
-        total_weight += g_default_encounter_table[i].weight;
+    for (i = 0; i < (int)(sizeof(g_encounter_figures) / sizeof(g_encounter_figures[0])); ++i) {
+        weight = get_dynamic_weight(game, g_encounter_figures[i]);
+        total_weight += weight;
+    }
+
+    if (total_weight <= 0) {
+        return OPPONENT_FIGURE_RONIN;
     }
 
     pick = rng_next_u16(game) % total_weight;
-    for (i = 0; i < (int)(sizeof(g_default_encounter_table) / sizeof(g_default_encounter_table[0])); ++i) {
-        if (pick < g_default_encounter_table[i].weight) {
-            return g_default_encounter_table[i].result;
+    for (i = 0; i < (int)(sizeof(g_encounter_figures) / sizeof(g_encounter_figures[0])); ++i) {
+        weight = get_dynamic_weight(game, g_encounter_figures[i]);
+        if (weight <= 0) {
+            continue;
         }
-        pick -= g_default_encounter_table[i].weight;
+        if (pick < weight) {
+            return g_encounter_figures[i];
+        }
+        pick -= weight;
     }
 
-    return g_default_encounter_table[0].result;
+    return OPPONENT_FIGURE_RONIN;
 }
 
 static int rects_overlap(Rect a, Rect b)
@@ -260,6 +312,9 @@ static void spawn_opponent(GameContext *game)
 
     figure = pick_weighted_figure(game);
     def = get_opponent_def(figure);
+    if (figure == OPPONENT_FIGURE_TSUJIGIRI) {
+        game->tsujigiri_spawned = 1;
+    }
     memset(&game->opponent, 0, sizeof(game->opponent));
     game->opponent.def = def;
     game->opponent.active = 1;

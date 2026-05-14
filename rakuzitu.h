@@ -136,11 +136,6 @@ typedef struct InputSnapshot {
     u8 any_pressed;
 } InputSnapshot;
 
-typedef struct WeightedEntry {
-    int weight;
-    OpponentFigure result;
-} WeightedEntry;
-
 typedef struct OpponentFigureDef {
     OpponentFigure figure;
     const AnimationAsset *run_anim;
@@ -189,6 +184,7 @@ typedef struct GameContext {
     u8 video_wait_vblank;
     u8 exit_requested;
     u8 gameover_drawn;
+    u8 tsujigiri_spawned;
     u16 state_tick;
     u16 kill_counter;
     u16 karma_counter;
