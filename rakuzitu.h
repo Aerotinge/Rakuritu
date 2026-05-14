@@ -141,7 +141,6 @@ typedef struct OpponentFigureDef {
     const AnimationAsset *run_anim;
     const AnimationAsset *attack_anim;
     const AnimationAsset *death_anim;
-    u8 hostile;
     long speed_fp;
     int attack_trigger_px;
     int source_width;

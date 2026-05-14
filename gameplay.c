@@ -8,7 +8,6 @@ static const OpponentFigureDef g_wolf_def = {
     &g_wolf_run_animation,
     &g_wolf_attack_animation,
     &g_wolf_death_animation,
-    1,
     SPEED_2X_FP,
     40,
     100,
@@ -20,7 +19,6 @@ static const OpponentFigureDef g_ronin_def = {
     &g_ronin_run_animation,
     &g_ronin_attack_animation,
     &g_ronin_death_animation,
-    1,
     SPEED_15X_FP,
     60,
     135,
@@ -32,7 +30,6 @@ static const OpponentFigureDef g_ashigaru_def = {
     &g_ashigaru_run_animation,
     &g_ashigaru_attack_animation,
     &g_ashigaru_death_animation,
-    1,
     SPEED_2X_FP,
     60,
     135,
@@ -44,7 +41,6 @@ static const OpponentFigureDef g_peasant_def = {
     &g_peasant_run_animation,
     &g_peasant_attack_animation,
     &g_peasant_death_animation,
-    1,
     SPEED_15X_FP,
     60,
     135,
@@ -56,7 +52,6 @@ static const OpponentFigureDef g_tsujigiri_def = {
     &g_tsujigiri_run_animation,
     &g_tsujigiri_attack_animation,
     &g_tsujigiri_death_animation,
-    1,
     SPEED_1X_FP,
     60,
     135,
@@ -120,6 +115,26 @@ static u16 rng_next_u16(GameContext *game)
         game->rng ^= 0xB400;
     }
     return game->rng;
+}
+
+static int get_spawn_blink_x(const GameContext *game, OpponentFigure figure)
+{
+    int blink_x;
+
+    if (figure == OPPONENT_FIGURE_TSUJIGIRI) {
+        return 96;
+    }
+
+    blink_x = game->sun_y + game->sun_y;
+    if (blink_x > 80) {
+        blink_x = 80;
+    }
+    return blink_x;
+}
+
+static u8 get_spawn_hostile(GameContext *game)
+{
+    return (rng_next_u16(game) & 15) < 13;
 }
 
 static int get_dynamic_weight(const GameContext *game, OpponentFigure figure)
@@ -318,14 +333,14 @@ static void spawn_opponent(GameContext *game)
     memset(&game->opponent, 0, sizeof(game->opponent));
     game->opponent.def = def;
     game->opponent.active = 1;
-    game->opponent.hostile = def->hostile;
+    game->opponent.hostile = get_spawn_hostile(game);
     game->opponent.x_fp = fp_from_int(SCREEN_WIDTH + 16);
     game->opponent.move_speed_fp = def->speed_fp;
     game->opponent.y_baseline = PLAYER_BASELINE_Y;
     game->opponent.anim_mode = OPPONENT_ANIM_RUN;
     game->opponent.anim_tick = 0;
     game->opponent.eye_color = EYE_COLOR_BLACK;
-    game->opponent.blink_x = (int)(rng_next_u16(game) % 81);
+    game->opponent.blink_x = get_spawn_blink_x(game, figure);
     invalidate_rect(&game->opponent.rect);
 }
 
@@ -342,6 +357,16 @@ static void start_player_attack(GameContext *game, PlayerAnimMode mode)
     game->player.anim_tick = 0;
     game->player.attack_active = 0;
     game->player.attack_kind = (mode == PLAYER_ANIM_ATTACK1) ? 1 : 2;
+
+    if (game->opponent.active &&
+        game->opponent.def != NULL &&
+        game->opponent.def->figure == OPPONENT_FIGURE_TSUJIGIRI &&
+        game->opponent.hostile == 0) {
+        game->opponent.hostile = 1;
+        if (game->opponent.eye_locked) {
+            game->opponent.eye_color = EYE_COLOR_RED;
+        }
+    }
 }
 
 static void kill_opponent(GameContext *game)
@@ -352,12 +377,12 @@ static void kill_opponent(GameContext *game)
 
     game->opponent.anim_mode = OPPONENT_ANIM_DEATH;
     game->opponent.anim_tick = 0;
-    game->opponent.hostile = 0;
     game->opponent.move_speed_fp = SPEED_1X_FP;
     game->kill_counter++;
-    if (game->opponent.def != NULL && game->opponent.def->hostile == 0) {
+    if (game->opponent.hostile == 0) {
         game->karma_counter++;
     }
+    game->opponent.hostile = 0;
 }
 
 static void start_player_death(GameContext *game)
@@ -452,9 +477,9 @@ static void update_opponent(GameContext *game)
         ++game->opponent.anim_tick;
     }
 
-    if (game->opponent.hostile && !game->opponent.eye_locked) {
-        if (fp_to_int(game->opponent.x_fp) <= (160 + game->opponent.blink_x)) {
-            game->opponent.eye_color = (rng_next_u16(game) & 1) ? EYE_COLOR_RED : EYE_COLOR_CYAN;
+    if (!game->opponent.eye_locked) {
+        if (fp_to_int(game->opponent.x_fp) <= (320 - game->opponent.blink_x)) {
+            game->opponent.eye_color = game->opponent.hostile ? EYE_COLOR_RED : EYE_COLOR_CYAN;
             game->opponent.eye_locked = 1;
         }
     }
