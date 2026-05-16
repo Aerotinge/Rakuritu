@@ -27,10 +27,10 @@ typedef struct player_attack1_meta_frame_t {
 #define PLAYER_ATTACK1_META_MASK_ODD_BYTES 1512
 
 static const player_attack1_meta_frame_t far player_attack1_meta_frames[4] = {
-    { 0, 0, 0, 0, 55, 54, 14, 72, 74, 28, 27 },
-    { 378, 378, 378, 378, 55, 54, 14, 72, 74, 28, 27 },
-    { 756, 756, 756, 756, 55, 54, 14, 72, 74, 28, 27 },
-    { 1134, 1134, 1134, 1134, 55, 54, 14, 72, 74, 28, 27 },
+    { 0, 0, 0, 0, 55, 54, 14, 72, 74, 27, 27 },
+    { 378, 378, 378, 378, 55, 54, 14, 72, 74, 27, 27 },
+    { 756, 756, 756, 756, 55, 54, 14, 72, 74, 27, 27 },
+    { 1134, 1134, 1134, 1134, 55, 54, 14, 72, 74, 27, 27 },
 };
 
 static const u8 far player_attack1_meta_pixels_even[1512] = {

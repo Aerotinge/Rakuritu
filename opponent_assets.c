@@ -1,5 +1,5 @@
 #include "assets/oppo_wolf_run_meta.h"
-#include "assets/oppo_wolf_atk_meta.h"
+#include "assets/oppo_wolf_attack_meta.h"
 #include "assets/oppo_wolf_death_meta.h"
 #include "assets/oppo_ronin_run_meta.h"
 #include "assets/oppo_ronin_attack_meta.h"
@@ -50,12 +50,12 @@ const AnimationAsset g_wolf_run_animation = {
 };
 
 const AnimationAsset g_wolf_attack_animation = {
-    OPPO_WOLF_ATK_META_FRAME_COUNT,
-    oppo_wolf_atk_meta_pixels_even,
-    oppo_wolf_atk_meta_pixels_odd,
-    oppo_wolf_atk_meta_mask_even,
-    oppo_wolf_atk_meta_mask_odd,
-    (const PackedSpriteFrame far *)oppo_wolf_atk_meta_frames
+    OPPO_WOLF_ATTACK_META_FRAME_COUNT,
+    oppo_wolf_attack_meta_pixels_even,
+    oppo_wolf_attack_meta_pixels_odd,
+    oppo_wolf_attack_meta_mask_even,
+    oppo_wolf_attack_meta_mask_odd,
+    (const PackedSpriteFrame far *)oppo_wolf_attack_meta_frames
 };
 
 const AnimationAsset g_wolf_death_animation = {
