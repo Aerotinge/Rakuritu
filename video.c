@@ -72,7 +72,7 @@ void set_video_mode(u8 mode)
     int86(0x10, &regs, &regs);
 }
 
-void init_cga_mode5(void)
+void init_cga_mode4(void)
 {
     union REGS regs;
     
@@ -85,7 +85,7 @@ void init_cga_mode5(void)
     int86(0x10, &regs, &regs);
 
     regs.h.ah = 0x0B;
-    regs.h.bh = 0x03;
+    regs.h.bh = 0x01;
     regs.h.bl = 0x00;
     int86(0x10, &regs, &regs);
 }
@@ -969,7 +969,7 @@ static void render_active_scene(GameContext *game)
     }
 
     floor_dirty_rect = union_floor_rects(g_previous_player_shadow_rect, g_previous_opponent_shadow_rect);
-    if (!game->low_detail && shadow_repeat_count != 0) {
+    if (!g_sys_low_detail && shadow_repeat_count != 0) {
         current_player_shadow_state.draw_x = player_draw_x;
         current_player_shadow_state.frame_index = player_frame;
         current_player_shadow_state.repeat_count = shadow_repeat_count;
@@ -989,7 +989,7 @@ static void render_active_scene(GameContext *game)
         floor_dirty_rect = union_floor_rects(floor_dirty_rect, union_floor_rects(current_player_shadow_rect, current_opponent_shadow_rect));
         restore_rect_from_floor(&floor_dirty_rect);
 
-        if (!game->low_detail && shadow_repeat_count != 0) {
+        if (!g_sys_low_detail && shadow_repeat_count != 0) {
             draw_shadow_from_even_rows(player_anim, player_frame, player_draw_x, shadow_repeat_count, &current_player_shadow_rect);
             if (game->opponent.active) {
                 draw_shadow_from_even_rows(opp_anim, opp_frame, opponent_draw_x, shadow_repeat_count, &current_opponent_shadow_rect);
@@ -1127,7 +1127,7 @@ void render_floor_step(GameContext *game)
     compose_floor_rows(game, step_start_row, step_row_count);
 
     shadow_repeat_count = get_shadow_repeat_count(game->sun_y);
-    if (!game->low_detail && shadow_repeat_count != 0) {
+    if (!g_sys_low_detail && shadow_repeat_count != 0) {
         player_anim = get_player_animation(game->player.anim_mode);
         player_frame = get_player_frame_index(game, player_anim);
         build_shadow_rect_from_even_rows(player_anim, player_frame, fp_to_int(game->player.x_fp) & ~3, shadow_repeat_count, &player_shadow_rect);

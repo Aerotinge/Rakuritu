@@ -2,7 +2,6 @@
 #define RAKUZITU_H
 
 #include <dos.h>
-#include <conio.h>
 
 typedef unsigned char  u8;
 typedef unsigned short u16;
@@ -60,6 +59,14 @@ typedef enum GameState {
     GAME_STATE_PLAYER_DYING,
     GAME_STATE_GAMEOVER
 } GameState;
+
+typedef enum GameOverReason {
+    GAMEOVER_KIA = 0,
+    GAMEOVER_LOST,
+    GAMEOVER_PROLONGED,
+    GAMEOVER_JINXED,
+    GAMEOVER_MIDNIGHT_SUN
+} GameOverReason;
 
 typedef enum PlayerAnimMode {
     PLAYER_ANIM_RUN = 0,
@@ -176,11 +183,6 @@ typedef struct GameContext {
     u16 background_scroll_pixels;
     u16 rendered_background_scroll_pixels;
     u16 rendered_floor_phase;
-    u8 low_detail;
-    u8 render_slot_hz;
-    u8 background_band_hz;
-    u8 floor_band_hz;
-    u8 player_frame_divisor;
     u8 video_wait_vblank;
     u8 exit_requested;
     u8 gameover_drawn;
@@ -190,6 +192,7 @@ typedef struct GameContext {
     u16 karma_counter;
     u16 rng; 
     int sun_y;
+    const AnimationAsset *gameover_asset;
     InputBindings bindings;
     InputSnapshot input;
     PlayerRuntime player;
@@ -199,6 +202,11 @@ typedef struct GameContext {
 } GameContext;
 
 extern GameContext g_game;
+extern u8 g_sys_low_detail;
+extern u8 g_sys_render_hz;
+extern u8 g_sys_bg_hz;
+extern u8 g_sys_floor_hz;
+extern u8 g_sys_frame_divisor;
 
 extern const AnimationAsset g_player_run_animation;
 extern const AnimationAsset g_player_attack1_animation;
@@ -224,7 +232,8 @@ extern const u8 far *g_gameover_pixels_even;
 extern const u8 far *g_gameover_pixels_odd;
 
 void set_video_mode(u8 mode);
-void init_cga_mode5(void);
+void set_gameover_asset(GameOverReason reason);
+void init_cga_mode4(void);
 void render_foreground(GameContext *game);
 void render_background_step(GameContext *game);
 void render_floor_step(GameContext *game);

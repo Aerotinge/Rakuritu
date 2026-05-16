@@ -134,7 +134,7 @@ static int get_spawn_blink_x(const GameContext *game, OpponentFigure figure)
 
 static u8 get_spawn_hostile(GameContext *game)
 {
-    return (rng_next_u16(game) & 15) < 13;
+    return (rng_next_u16(game) & 3) != 0;
 }
 
 static int get_dynamic_weight(const GameContext *game, OpponentFigure figure)
@@ -265,7 +265,7 @@ const AnimationAsset *get_opponent_animation(const OpponentRuntime *opponent)
     }
 }
 
-static u16 get_looping_frame(const GameContext *game, u16 anim_tick, const AnimationAsset *animation)
+static u16 get_looping_frame(u16 anim_tick, const AnimationAsset *animation)
 {
     u16 frame_tick;
 
@@ -273,7 +273,7 @@ static u16 get_looping_frame(const GameContext *game, u16 anim_tick, const Anima
         return 0;
     }
 
-    frame_tick = anim_tick / game->player_frame_divisor;
+    frame_tick = anim_tick / g_sys_frame_divisor;
     return (u16)(frame_tick % animation->frame_count);
 }
 
@@ -301,7 +301,7 @@ static u16 get_one_shot_frame(u16 anim_tick, u16 total_ticks, const AnimationAss
 u16 get_player_frame_index(const GameContext *game, const AnimationAsset *animation)
 {
     if (game->player.anim_mode == PLAYER_ANIM_RUN) {
-        return get_looping_frame(game, game->player.anim_tick, animation);
+        return get_looping_frame(game->player.anim_tick, animation);
     } else if (game->player.anim_mode == PLAYER_ANIM_DEATH) {
         return get_one_shot_frame(game->player.anim_tick, PLAYER_DEATH_ANIM_TICKS, animation);
     } else {
@@ -312,7 +312,7 @@ u16 get_player_frame_index(const GameContext *game, const AnimationAsset *animat
 u16 get_opponent_frame_index(const GameContext *game, const AnimationAsset *animation)
 {
     if (game->opponent.anim_mode == OPPONENT_ANIM_RUN) {
-        return get_looping_frame(game, game->opponent.anim_tick, animation);
+        return get_looping_frame(game->opponent.anim_tick, animation);
     } else if (game->opponent.anim_mode == OPPONENT_ANIM_ATTACK) {
         return get_one_shot_frame(game->opponent.anim_tick, OPPONENT_ATTACK_TICKS, animation);
     } else {
@@ -522,6 +522,24 @@ static void update_gameplay(GameContext *game)
         if ((fp_to_int(game->opponent.x_fp) + game->opponent.def->source_width) < 0) {
             game->opponent.active = 0;
             invalidate_rect(&game->opponent.rect);
+            
+            if (game->background_scroll_pixels >= BG_STRIP_HEIGHT) {
+                set_gameover_asset(GAMEOVER_LOST);
+                game->state = GAME_STATE_GAMEOVER;
+                game->state_tick = 0;
+                game->gameover_drawn = 0;
+                return;
+            }
+            
+            /* kill_counter > 40 + (7 * karma), but avoiding slow MUL instruction */
+            if (game->kill_counter > (40U + ((game->karma_counter << 3) - game->karma_counter))) {
+                set_gameover_asset(GAMEOVER_PROLONGED);
+                game->state = GAME_STATE_GAMEOVER;
+                game->state_tick = 0;
+                game->gameover_drawn = 0;
+                return;
+            }
+
             game->state = GAME_STATE_PICK_ENCOUNTER;
             game->state_tick = 0;
         }
@@ -534,6 +552,13 @@ static void update_gameplay(GameContext *game)
             game->state = GAME_STATE_GAMEOVER;
             game->state_tick = 0;
             game->gameover_drawn = 0;
+            
+            /* Killed by Tsujigiri check */
+            if (game->opponent.def != NULL && game->opponent.def->figure == OPPONENT_FIGURE_TSUJIGIRI) {
+                set_gameover_asset(GAMEOVER_JINXED);
+            } else {
+                set_gameover_asset(GAMEOVER_KIA);
+            }
         }
     }
 }
@@ -549,7 +574,8 @@ void tick_game(GameContext *game)
 
     if (game->state == GAME_STATE_GAMEOVER) {
         if (game->input.any_pressed) {
-            game->exit_requested = 1;
+            init_game(game);
+            draw_ui_frame_once();
         }
         return;
     }
@@ -573,12 +599,6 @@ void init_game(GameContext *game)
     game->sun_y = 0;
     game->rendered_background_scroll_pixels = 0xFFFF;
     game->rendered_floor_phase = 0xFFFF;
-    
-    game->render_slot_hz = 15;
-    game->player_frame_divisor = 2;
-    game->background_band_hz = 4;
-    game->floor_band_hz = 2;
-    
     game->video_wait_vblank = 1;
     init_default_bindings(&game->bindings);
     game->rng = seed_rng();
