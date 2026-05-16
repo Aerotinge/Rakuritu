@@ -45,7 +45,6 @@ static void run_game_loop(void)
 
         base_ticks_processed = 0;
         
-        /* Grab ticks in a single atomic batch instead of polling the timer flag repetitively */
         grabbed_ticks = consume_available_ticks(base_ticks_to_process);
         
         while (base_ticks_processed < grabbed_ticks) {
@@ -61,13 +60,13 @@ static void run_game_loop(void)
             }
 
             ++render_divider_count;
-            if (render_divider_count >= (BASE_TIMER_HZ / RENDER_SLOT_HZ)) {
+            if (render_divider_count >= (BASE_TIMER_HZ / g_game.render_slot_hz)) {
                 render_divider_count = 0;
                 foreground_due = 1;
             }
 
             ++background_divider_count;
-            if (background_divider_count >= (BASE_TIMER_HZ / BACKGROUND_BAND_HZ)) {
+            if (background_divider_count >= (BASE_TIMER_HZ / g_game.background_band_hz)) {
                 background_divider_count = 0;
                 if (g_game.state != GAME_STATE_PLAYER_DYING && g_game.state != GAME_STATE_GAMEOVER) {
                     background_pending = 1;
@@ -75,7 +74,7 @@ static void run_game_loop(void)
             }
 
             ++floor_divider_count;
-            if (floor_divider_count >= (BASE_TIMER_HZ / FLOOR_BAND_HZ)) {
+            if (floor_divider_count >= (BASE_TIMER_HZ / g_game.floor_band_hz)) {
                 floor_divider_count = 0;
                 if (g_game.state != GAME_STATE_PLAYER_DYING && g_game.state != GAME_STATE_GAMEOVER) {
                     floor_pending = 1;
@@ -102,11 +101,17 @@ int main(int argc, char **argv)
     int i;
 
     init_game(&g_game);
+    
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-lo") == 0) {
             g_game.low_detail = 1;
+            g_game.render_slot_hz = 10;
+            g_game.player_frame_divisor = 3;
+            g_game.background_band_hz = 2;
+            g_game.floor_band_hz = 1;
         }
     }
+    
     init_cga_mode5();
     init_keyboard();
     init_timer();

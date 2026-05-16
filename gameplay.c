@@ -265,7 +265,7 @@ const AnimationAsset *get_opponent_animation(const OpponentRuntime *opponent)
     }
 }
 
-static u16 get_looping_frame(u16 anim_tick, const AnimationAsset *animation)
+static u16 get_looping_frame(const GameContext *game, u16 anim_tick, const AnimationAsset *animation)
 {
     u16 frame_tick;
 
@@ -273,7 +273,7 @@ static u16 get_looping_frame(u16 anim_tick, const AnimationAsset *animation)
         return 0;
     }
 
-    frame_tick = anim_tick / PLAYER_FRAME_DIVISOR;
+    frame_tick = anim_tick / game->player_frame_divisor;
     return (u16)(frame_tick % animation->frame_count);
 }
 
@@ -301,7 +301,7 @@ static u16 get_one_shot_frame(u16 anim_tick, u16 total_ticks, const AnimationAss
 u16 get_player_frame_index(const GameContext *game, const AnimationAsset *animation)
 {
     if (game->player.anim_mode == PLAYER_ANIM_RUN) {
-        return get_looping_frame(game->player.anim_tick, animation);
+        return get_looping_frame(game, game->player.anim_tick, animation);
     } else if (game->player.anim_mode == PLAYER_ANIM_DEATH) {
         return get_one_shot_frame(game->player.anim_tick, PLAYER_DEATH_ANIM_TICKS, animation);
     } else {
@@ -312,7 +312,7 @@ u16 get_player_frame_index(const GameContext *game, const AnimationAsset *animat
 u16 get_opponent_frame_index(const GameContext *game, const AnimationAsset *animation)
 {
     if (game->opponent.anim_mode == OPPONENT_ANIM_RUN) {
-        return get_looping_frame(game->opponent.anim_tick, animation);
+        return get_looping_frame(game, game->opponent.anim_tick, animation);
     } else if (game->opponent.anim_mode == OPPONENT_ANIM_ATTACK) {
         return get_one_shot_frame(game->opponent.anim_tick, OPPONENT_ATTACK_TICKS, animation);
     } else {
@@ -573,6 +573,12 @@ void init_game(GameContext *game)
     game->sun_y = 0;
     game->rendered_background_scroll_pixels = 0xFFFF;
     game->rendered_floor_phase = 0xFFFF;
+    
+    game->render_slot_hz = 15;
+    game->player_frame_divisor = 2;
+    game->background_band_hz = 4;
+    game->floor_band_hz = 2;
+    
     game->video_wait_vblank = 1;
     init_default_bindings(&game->bindings);
     game->rng = seed_rng();

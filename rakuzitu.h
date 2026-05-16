@@ -18,18 +18,16 @@ typedef unsigned long  u32;
 #define CGA_ODD_OFFSET            0x2000
 #define BLACK_BYTE                0x00
 #define WHITE_BYTE                0xFF
+
 #define BASE_TIMER_HZ             120
 #define LOGIC_HZ                  30
-#define RENDER_SLOT_HZ            15
-#define BACKGROUND_BAND_HZ        6
-#define FLOOR_BAND_HZ             4
+
 #define PIT_INPUT_HZ              1193180UL
 #define PIT_BIOS_DIVISOR          65536UL
 #define PIT_BASE_DIVISOR          ((u16)(PIT_INPUT_HZ / BASE_TIMER_HZ))
 
 #define FP_SHIFT                  8
 #define FP_ONE                    256L
-/* Fixed-point conversions replaced with instantaneous inline macros */
 #define fp_from_int(value)        (((long)(value)) << FP_SHIFT)
 #define fp_to_int(value)          ((int)((value) >> FP_SHIFT))
 
@@ -41,11 +39,10 @@ typedef unsigned long  u32;
 #define PLAYER_BASELINE_Y         100
 #define PLAYER_ENTRY_START_X      (-96)
 #define PLAYER_ENTRY_SPEED_FP     SPEED_1X_FP
-#define PLAYER_FRAME_DIVISOR      2
 #define PLAYER_ATTACK_TOTAL_TICKS 18
 #define PLAYER_ATTACK_ACTIVE_TICKS 9
-#define PLAYER_DEATH_ANIM_TICKS   39
-#define PLAYER_GAMEOVER_DELAY_TICKS 45
+#define PLAYER_DEATH_ANIM_TICKS   32
+#define PLAYER_GAMEOVER_DELAY_TICKS 30
 #define PLAYER_DEATH_TOTAL_TICKS  (PLAYER_DEATH_ANIM_TICKS + PLAYER_GAMEOVER_DELAY_TICKS)
 #define OPPONENT_ATTACK_TICKS     18
 #define OPPONENT_DEATH_TICKS      30
@@ -180,6 +177,10 @@ typedef struct GameContext {
     u16 rendered_background_scroll_pixels;
     u16 rendered_floor_phase;
     u8 low_detail;
+    u8 render_slot_hz;
+    u8 background_band_hz;
+    u8 floor_band_hz;
+    u8 player_frame_divisor;
     u8 video_wait_vblank;
     u8 exit_requested;
     u8 gameover_drawn;
@@ -188,7 +189,7 @@ typedef struct GameContext {
     u16 kill_counter;
     u16 karma_counter;
     u16 rng; 
-    int sun_y;   /* Centralized derived parallax coordinate */
+    int sun_y;
     InputBindings bindings;
     InputSnapshot input;
     PlayerRuntime player;

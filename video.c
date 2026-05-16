@@ -77,7 +77,7 @@ void init_cga_mode5(void)
     union REGS regs;
     
     init_recolor_luts();
-    set_video_mode(0x05);
+    set_video_mode(0x04);
 
     regs.h.ah = 0x0B;
     regs.h.bh = 0x00;
@@ -85,7 +85,7 @@ void init_cga_mode5(void)
     int86(0x10, &regs, &regs);
 
     regs.h.ah = 0x0B;
-    regs.h.bh = 0x01;
+    regs.h.bh = 0x03;
     regs.h.bl = 0x00;
     int86(0x10, &regs, &regs);
 }
@@ -141,7 +141,7 @@ static void tile_strip_row(u8 *dst, const u8 far *row_pattern)
     }
 }
 
-/* 16-BIT BRANCHLESS BLIT: Pure-C logical optimization */
+/* 16-BIT BRANCHLESS BLIT */
 static void composite_row_near(u8 *dst, const u8 *mask, const u8 *pixels, u16 count)
 {
     u16 *d16 = (u16 *)dst;
@@ -170,44 +170,55 @@ static void composite_row_near_lut(u8 *dst, const u8 *mask, const u8 *pixels, u1
     }
 }
 
+static void composite_sun_row_near(u8 *dst, const u8 *mask, u16 count)
+{
+    u16 *d16 = (u16 *)dst;
+    const u16 *m16 = (const u16 *)mask;
+    u16 words = count >> 1;
+    u16 m;
+
+    while (words--) {
+        m = *m16++;
+        /* (~m & 0xAAAA) generates perfectly anti-aliased red pixels on the fly */
+        *d16 = (*d16 & m) | (~m & 0xAAAA);
+        d16++;
+    }
+    
+    if (count & 1) {
+        m = mask[count - 1];
+        dst[count - 1] = (u8)((dst[count - 1] & m) | (~m & 0xAA));
+    }
+}
+
 static void draw_sun_slice(int sun_y, u16 start_row, u16 row_count)
 {
     int sun_x_byte;
     int visible_byte_count;
     int row;
     int dst_y;
-    const u8 far *pix_ptr;
     const u8 far *mask_ptr;
-    const u8 far *row_pixels_even;
-    const u8 far *row_pixels_odd;
     const u8 far *row_mask_even;
     const u8 far *row_mask_odd;
     u8 *dst;
 
-    /* Statically allocated buffers to prevent stack overhead */
+    /* Only the mask buffer is needed now */
     static u8 g_near_mask_buf[80];
-    static u8 g_near_pix_buf[80];
 
+    /* Fixed X position at 104px (byte 26) */
     sun_x_byte = 26;
     visible_byte_count = BG_SUN_frames[0].bytes_per_row;
 
-    row_pixels_even = BG_SUN_pixels_even + BG_SUN_frames[0].pixel_even_offset;
-    row_pixels_odd  = BG_SUN_pixels_odd  + BG_SUN_frames[0].pixel_odd_offset;
-    row_mask_even   = BG_SUN_mask_even   + BG_SUN_frames[0].mask_even_offset;
-    row_mask_odd    = BG_SUN_mask_odd    + BG_SUN_frames[0].mask_odd_offset;
+    row_mask_even = BG_SUN_mask_even + BG_SUN_frames[0].mask_even_offset;
+    row_mask_odd  = BG_SUN_mask_odd  + BG_SUN_frames[0].mask_odd_offset;
 
     for (row = 0; row < (int)BG_SUN_frames[0].height; ++row) {
         dst_y = sun_y + row;
         
         if (row & 1) {
-            pix_ptr = row_pixels_odd;
             mask_ptr = row_mask_odd;
-            row_pixels_odd += visible_byte_count;
             row_mask_odd += visible_byte_count;
         } else {
-            pix_ptr = row_pixels_even;
             mask_ptr = row_mask_even;
-            row_pixels_even += visible_byte_count;
             row_mask_even += visible_byte_count;
         }
 
@@ -218,13 +229,12 @@ static void draw_sun_slice(int sun_y, u16 start_row, u16 row_count)
             continue;
         }
 
-        /* Fetch far pattern row efficiently to scratchpad buffers */
+        /* Fetch only the mask */
         _fmemcpy((void far *)g_near_mask_buf, mask_ptr, (size_t)visible_byte_count);
-        _fmemcpy((void far *)g_near_pix_buf, pix_ptr, (size_t)visible_byte_count);
 
-        /* Composite directly into the clean background buffer */
+        /* Draw directly into the clean background buffer */
         dst = &clean_background_buffer[dst_y][sun_x_byte];
-        composite_row_near(dst, g_near_mask_buf, g_near_pix_buf, (u16)visible_byte_count);
+        composite_sun_row_near(dst, g_near_mask_buf, (u16)visible_byte_count);
     }
 }
 
@@ -253,7 +263,7 @@ static void compose_background_rows(GameContext *game, u16 start_row, u16 row_co
         clean_ptr += BYTES_PER_SCANLINE;
     }
 
-    /* Update Parallax Sun dynamically onto the drawn background slices */
+    /* Update Parallax Sun dynamically */
     draw_sun_slice(game->sun_y, start_row, row_count);
 
     /* Bulk standard block copy to top buffer instead of double-rendering */
@@ -445,7 +455,12 @@ static void draw_animation_frame(const AnimationAsset *animation, u16 frame_inde
     const u8 far *row_pixels;
     const u8 far *row_mask;
     u8 *dst_ptr;
-    int row, dst_x_byte, dst_y, src_start_byte, visible_byte_count, clip_right_byte;
+    int row;
+    int dst_x_byte;
+    int dst_y;
+    int src_start_byte;
+    int visible_byte_count;
+    int clip_right_byte;
     const u8 *lut;
     
     /* Statically allocated buffers */
@@ -458,7 +473,9 @@ static void draw_animation_frame(const AnimationAsset *animation, u16 frame_inde
     }
 
     frame_meta = animation->frames + (frame_index % animation->frame_count);
-    if ((draw_x & 3) != 0) draw_x &= ~3;
+    if ((draw_x & 3) != 0) {
+        draw_x &= ~3;
+    }
 
     if (out_rect != NULL) {
         out_rect->x = draw_x;
@@ -724,7 +741,6 @@ static void compose_floor_rows(const GameContext *game, u16 start_row, u16 row_c
         }
     }
 
-    /* Massive optimization: Bulk block copy to floor buffer instead of double-rendering */
     memcpy(floor_backbuffer[start_row], clean_floor_buffer[start_row], row_count * BYTES_PER_SCANLINE);
 }
 
@@ -780,7 +796,6 @@ static void draw_shadow_from_even_rows(const AnimationAsset *animation, u16 fram
     const u16 *m16;
     u16 words;
 
-    /* Statically allocated buffer */
     static u8 g_near_mask_buf[80];
 
     build_shadow_rect_from_even_rows(animation, frame_index, draw_x, repeat_count, out_rect);
