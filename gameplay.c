@@ -212,16 +212,18 @@ static OpponentFigure pick_weighted_figure(GameContext *game)
     return OPPONENT_FIGURE_RONIN;
 }
 
-static int rects_overlap(Rect a, Rect b)
+static int check_combat_hit(Rect a, Rect b)
 {
     if (a.valid == 0 || b.valid == 0) {
         return 0;
     }
 
-    return (a.x < b.x + b.width) &&
-           (a.x + a.width > b.x) &&
-           (a.y < b.y + b.height) &&
-           (a.y + a.height > b.y);
+    if (a.x >= b.x) {
+        return 0;
+    }
+
+    /* Penetration depth */
+    return ((a.x + a.width) - b.x) >= 18;
 }
 
 static void invalidate_rect(Rect *rect)
@@ -520,11 +522,11 @@ static void update_gameplay(GameContext *game)
     }
 
     if (game->state == GAME_STATE_ACTIVE_ENCOUNTER) {
-        if (game->player.attack_active && rects_overlap(game->player.rect, game->opponent.rect)) {
+        if (game->player.attack_active && check_combat_hit(game->player.rect, game->opponent.rect)) {
             kill_opponent(game);
         } else if (game->opponent.hostile &&
                    game->opponent.anim_mode == OPPONENT_ANIM_ATTACK &&
-                   rects_overlap(game->player.rect, game->opponent.rect)) {
+                   check_combat_hit(game->player.rect, game->opponent.rect)) {
             start_player_death(game);
             return;
         }
