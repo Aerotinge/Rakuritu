@@ -117,7 +117,7 @@ int main(int argc, char **argv)
     
     init_game(&g_game);
 	set_video_mode(0x04);
-    init_cga_mode4();
+    set_cga_palette(0x00, 0x01);
     init_keyboard();
     init_timer();
     

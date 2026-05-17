@@ -231,9 +231,9 @@ extern const PackedSpriteFrame far *g_gameover_frame;
 extern const u8 far *g_gameover_pixels_even;
 extern const u8 far *g_gameover_pixels_odd;
 
-void set_video_mode(u8 mode);
+void set_cga_palette(u8 palette, u8 intensity);
 void set_gameover_asset(GameOverReason reason);
-void init_cga_mode4(void);
+void set_video_mode(u8 mode);
 void render_foreground(GameContext *game);
 void render_background_step(GameContext *game);
 void render_floor_step(GameContext *game);

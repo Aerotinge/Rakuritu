@@ -399,13 +399,23 @@ static void start_player_death(GameContext *game)
 
 static void update_background(GameContext *game)
 {
+    int prev_sun_y;
+	
     ++game->background_scroll_ticks;
     if (game->background_scroll_ticks >= BACKGROUND_SCROLL_TICKS) {
         game->background_scroll_ticks = 0;
         if (game->background_scroll_pixels < BG_STRIP_HEIGHT) {
             ++game->background_scroll_pixels;
-            /* Calculate derived sun coordinate exactly once per background scroll */
+            
+            prev_sun_y = game->sun_y;
+            
+            /* Calculate derived sun coordinate */
             game->sun_y = 0 + (game->background_scroll_pixels >> 1);
+            
+            /* Trigger high intensity mode exactly once when sun_y hits 24 */
+            if (prev_sun_y < 24 && game->sun_y >= 24) {
+                set_cga_palette(0x00, 0x00);
+            }
         }
     }
 }
@@ -528,6 +538,7 @@ static void update_gameplay(GameContext *game)
                 game->state = GAME_STATE_GAMEOVER;
                 game->state_tick = 0;
                 game->gameover_drawn = 0;
+                set_cga_palette(0x01, 0x00); /* Colors for GAMEOVER_LOST */
                 return;
             }
             
@@ -537,6 +548,7 @@ static void update_gameplay(GameContext *game)
                 game->state = GAME_STATE_GAMEOVER;
                 game->state_tick = 0;
                 game->gameover_drawn = 0;
+                set_cga_palette(0x01, 0x00); /* Colors for GAMEOVER_PROLONGED */
                 return;
             }
 
@@ -556,8 +568,10 @@ static void update_gameplay(GameContext *game)
             /* Killed by Tsujigiri check */
             if (game->opponent.def != NULL && game->opponent.def->figure == OPPONENT_FIGURE_TSUJIGIRI) {
                 set_gameover_asset(GAMEOVER_JINXED);
+				set_cga_palette(0x00, 0x00); /* Colors for GAMEOVER_JINXED */
             } else {
                 set_gameover_asset(GAMEOVER_KIA);
+				set_cga_palette(0x00, 0x00); /* Colors for GAMEOVER_JINXED */
             }
         }
     }
@@ -575,6 +589,7 @@ void tick_game(GameContext *game)
     if (game->state == GAME_STATE_GAMEOVER) {
         if (game->input.any_pressed) {
             init_game(game);
+            set_cga_palette(0x00, 0x01);
             draw_ui_frame_once();
         }
         return;

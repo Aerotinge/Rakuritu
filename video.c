@@ -67,26 +67,28 @@ static void init_recolor_luts(void)
 void set_video_mode(u8 mode)
 {
     union REGS regs;
+	
+	init_recolor_luts();
+	
     regs.h.ah = 0x00;
     regs.h.al = mode;
     int86(0x10, &regs, &regs);
 }
 
-void init_cga_mode4(void)
+void set_cga_palette(u8 palette, u8 intensity)
 {
     union REGS regs;
-    
-    init_recolor_luts();
-    set_video_mode(0x04);
 
+    /* BH=00h sets the background color (bits 0-3) and the intensity (bit 4) */
     regs.h.ah = 0x0B;
     regs.h.bh = 0x00;
-    regs.h.bl = 0x00;
+    regs.h.bl = (intensity ? 0x10 : 0x00);
     int86(0x10, &regs, &regs);
 
+    /* BH=01h sets the palette (0 = Green/Red/Brown, 1 = Cyan/Magenta/White) */
     regs.h.ah = 0x0B;
     regs.h.bh = 0x01;
-    regs.h.bl = 0x00;
+    regs.h.bl = (palette & 0x01);
     int86(0x10, &regs, &regs);
 }
 
@@ -756,8 +758,8 @@ static void refresh_floor_buffer(GameContext *game, u8 blit_now)
 
 static u8 get_shadow_repeat_count(int sun_y)
 {
-    if (sun_y < 26) return 3;
-    if (sun_y < 53) return 4;
+    if (sun_y < 27) return 3;
+    if (sun_y < 54) return 4;
     if (sun_y < 80) return 5;
     return 0;
 }
